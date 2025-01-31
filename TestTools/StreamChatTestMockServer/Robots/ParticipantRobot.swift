@@ -1,9 +1,8 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
-import Swifter
 import XCTest
 
 public class ParticipantRobot {
@@ -11,7 +10,7 @@ public class ParticipantRobot {
     private var server: StreamMockServer
     private var threadParentId: String?
     private var user: [String: String] = UserDetails.hanSolo
-    
+
     public init(_ server: StreamMockServer) {
         self.server = server
     }
@@ -19,7 +18,7 @@ public class ParticipantRobot {
     public var currentUserId: String {
         UserDetails.userId(for: user)
     }
-    
+
     @discardableResult
     public func startTyping() -> Self {
         server.websocketEvent(
@@ -29,7 +28,7 @@ public class ParticipantRobot {
         )
         return self
     }
-    
+
     @discardableResult
     public func startTypingInThread() -> Self {
         let parentId = threadParentId ?? (server.lastMessage?[messageKey.id.rawValue] as? String)
@@ -41,7 +40,7 @@ public class ParticipantRobot {
         )
         return self
     }
-    
+
     @discardableResult
     public func stopTyping() -> Self {
         server.websocketEvent(
@@ -51,7 +50,7 @@ public class ParticipantRobot {
         )
         return self
     }
-    
+
     @discardableResult
     public func stopTypingInThread() -> Self {
         let parentId = threadParentId ?? (server.lastMessage?[messageKey.id.rawValue] as? String)
@@ -63,7 +62,7 @@ public class ParticipantRobot {
         )
         return self
     }
-    
+
     // Sleep in seconds
     @discardableResult
     public func wait(_ duration: TimeInterval) -> Self {
@@ -71,25 +70,32 @@ public class ParticipantRobot {
         usleep(sleepTime)
         return self
     }
-    
+
     @discardableResult
-    public func readMessage() -> Self {
+    public func readMessage(parentId: String? = nil) -> Self {
         server.waitForChannelsUpdate()
-        
+
         server.websocketEvent(
             .messageRead,
             user: participant(),
-            channelId: server.currentChannelId
+            channelId: server.currentChannelId,
+            parentMessageId: parentId
         )
         return self
     }
-    
+
     @discardableResult
-    public func readMessageAfterDelay(_ delay: Double = 0.3) -> Self {
+    public func readMessageAfterDelay(_ delay: Double = 1, parentId: String? = nil) -> Self {
         wait(delay)
-        return readMessage()
+        return readMessage(parentId: parentId)
     }
     
+    @discardableResult
+    public func readMessageInThreadAfterDelay(_ delay: Double = 1) -> Self {
+        let parentId = threadParentId ?? (server.lastMessage?[messageKey.id.rawValue] as? String)
+        return readMessageAfterDelay(parentId: parentId)
+    }
+
     @discardableResult
     public func sendMessage(_ text: String,
                             withPushNotification: Bool = false,
@@ -102,16 +108,16 @@ public class ParticipantRobot {
         if waitBeforeSending > 0 {
             wait(waitBeforeSending)
         }
-        
+
         if waitForChannelQuery {
             server.waitForChannelQueryUpdate()
         }
-        
+
         startTyping()
         stopTyping()
-        
+
         let messageId = TestData.uniqueId
-        
+
         server.websocketMessage(
             text,
             channelId: server.currentChannelId,
@@ -119,11 +125,11 @@ public class ParticipantRobot {
             eventType: .messageNew,
             user: participant()
         )
-        
+
         if waitForAppearance {
             server.waitForWebsocketMessage(withText: text)
         }
-        
+
         if withPushNotification {
             if let senderName = participant()?["name"] as? String {
                 server.pushNotification(
@@ -152,7 +158,7 @@ public class ParticipantRobot {
         }
         return self
     }
-    
+
     @discardableResult
     public func editMessage(_ text: String) -> Self {
         let messageId = server.lastMessage?[messageKey.id.rawValue] as? String
@@ -165,7 +171,7 @@ public class ParticipantRobot {
         )
         return self
     }
-    
+
     @discardableResult
     public func deleteMessage(hard: Bool = false) -> Self {
         let user = participant()
@@ -181,7 +187,7 @@ public class ParticipantRobot {
         )
         return self
     }
-    
+
     @discardableResult
     public func addReaction(type: TestData.Reactions) -> Self {
         server.websocketReaction(
@@ -191,7 +197,7 @@ public class ParticipantRobot {
         )
         return self
     }
-    
+
     @discardableResult
     public func deleteReaction(type: TestData.Reactions) -> Self {
         server.websocketReaction(
@@ -203,11 +209,11 @@ public class ParticipantRobot {
     }
     
     @discardableResult
-    public func replyToMessage(_ text: String) -> Self {
+    public func replyToMessage(_ text: String, withAttachment: Bool, toLastMessage: Bool = true) -> Self {
         startTyping()
         stopTyping()
-        
-        let quotedMessage = server.lastMessage
+
+        let quotedMessage = toLastMessage ? server.lastMessage : server.firstMessage
         let quotedMessageId = quotedMessage?[messageKey.id.rawValue] as? String
         server.websocketMessage(
             text,
@@ -222,20 +228,43 @@ public class ParticipantRobot {
         }
         return self
     }
-    
+
+    @discardableResult
+    public func quoteMessage(_ text: String, toLastMessage: Bool = true) -> Self {
+        startTyping()
+        stopTyping()
+
+        let quotedMessage = toLastMessage ? server.lastMessage : server.firstMessage
+        let quotedMessageId = quotedMessage?[messageKey.id.rawValue] as? String
+        server.websocketMessage(
+            text,
+            channelId: server.currentChannelId,
+            messageId: TestData.uniqueId,
+            eventType: .messageNew,
+            user: participant()
+        ) { message in
+            message?[messageKey.quotedMessageId.rawValue] = quotedMessageId
+            message?[messageKey.quotedMessage.rawValue] = quotedMessage
+            return message
+        }
+        return self
+    }
+
     @discardableResult
     public func replyToMessageInThread(_ text: String, alsoSendInChannel: Bool = false) -> Self {
         startTypingInThread()
         stopTypingInThread()
-        
+
         let parentId = threadParentId ?? (server.lastMessage?[messageKey.id.rawValue] as? String)
         server.websocketMessage(
             text,
             channelId: server.currentChannelId,
             messageId: TestData.uniqueId,
             parentId: parentId,
+            messageType: alsoSendInChannel ? .regular : .reply,
             eventType: .messageNew,
-            user: participant()
+            user: participant(),
+            channelReply: alsoSendInChannel
         ) { message in
             message?[messageKey.parentId.rawValue] = parentId
             message?[messageKey.showReplyInChannel.rawValue] = alsoSendInChannel
@@ -245,18 +274,45 @@ public class ParticipantRobot {
     }
     
     @discardableResult
+    public func quoteMessageInThread(_ text: String, toLastMessage: Bool = true, alsoSendInChannel: Bool = false) -> Self {
+        startTypingInThread()
+        stopTypingInThread()
+
+        let parentId = threadParentId ?? (server.lastMessage?[messageKey.id.rawValue] as? String)
+        let quotedMessage = toLastMessage ? server.lastMessageInThread : server.firstMessageInThread
+        let quotedMessageId = quotedMessage?[messageKey.id.rawValue] as? String
+        server.websocketMessage(
+            text,
+            channelId: server.currentChannelId,
+            messageId: TestData.uniqueId,
+            parentId: parentId,
+            messageType: alsoSendInChannel ? .regular : .reply,
+            eventType: .messageNew,
+            user: participant(),
+            channelReply: alsoSendInChannel
+        ) { message in
+            message?[messageKey.parentId.rawValue] = parentId
+            message?[messageKey.showReplyInChannel.rawValue] = alsoSendInChannel
+            message?[messageKey.quotedMessageId.rawValue] = quotedMessageId
+            message?[messageKey.quotedMessage.rawValue] = quotedMessage
+            return message
+        }
+        return self
+    }
+
+    @discardableResult
     public func sendGiphy(waitForChannelQuery: Bool = true, waitBeforeSending: TimeInterval = 0) -> Self {
         if waitBeforeSending > 0 {
             wait(waitBeforeSending)
         }
-        
+
         if waitForChannelQuery {
             server.waitForChannelQueryUpdate()
         }
-        
+
         startTyping()
         stopTyping()
-        
+
         server.websocketMessage(
             channelId: server.currentChannelId,
             messageId: TestData.uniqueId,
@@ -266,13 +322,13 @@ public class ParticipantRobot {
         )
         return self
     }
-    
+
     @discardableResult
-    public func replyWithGiphy() -> Self {
+    public func replyWithGiphy(toLastMessage: Bool = true) -> Self {
         startTyping()
         stopTyping()
         
-        let quotedMessage = server.lastMessage
+        let quotedMessage = toLastMessage ? server.lastMessage : server.firstMessage
         let quotedMessageId = quotedMessage?[messageKey.id.rawValue] as? String
         server.websocketMessage(
             channelId: server.currentChannelId,
@@ -287,27 +343,32 @@ public class ParticipantRobot {
         }
         return self
     }
-    
+
     @discardableResult
-    public func replyWithGiphyInThread(alsoSendInChannel: Bool = false) -> Self {
+    public func replyWithGiphyInThread(toLastMessage: Bool = true, alsoSendInChannel: Bool = false) -> Self {
         startTypingInThread()
         stopTypingInThread()
         
+        let quotedMessage = toLastMessage ? server.lastMessageInThread : server.firstMessageInThread
+        let quotedMessageId = quotedMessage?[messageKey.id.rawValue] as? String
         let parentId = threadParentId ?? (server.lastMessage?[messageKey.id.rawValue] as? String)
         server.websocketMessage(
             channelId: server.currentChannelId,
             messageId: TestData.uniqueId,
+            parentId: parentId,
             messageType: .ephemeral,
             eventType: .messageNew,
             user: participant()
         ) { message in
             message?[messageKey.parentId.rawValue] = parentId
             message?[messageKey.showReplyInChannel.rawValue] = alsoSendInChannel
+            message?[messageKey.quotedMessageId.rawValue] = quotedMessageId
+            message?[messageKey.quotedMessage.rawValue] = quotedMessage
             return message
         }
         return self
     }
-    
+
     private func participant() -> [String: Any]? {
         let json = TestData.toJson(.message)
         guard let message = json[JSONKey.message] as? [String: Any] else {
@@ -316,10 +377,14 @@ public class ParticipantRobot {
 
         return server.setUpUser(source: message, details: user)
     }
-    
+
     @discardableResult
     public func uploadAttachment(type: AttachmentType,
                                  count: Int = 1,
+                                 asReplyToFirstMessage: Bool = false,
+                                 asReplyToLastMessage: Bool = false,
+                                 inThread: Bool = false,
+                                 alsoInChannel: Bool = false,
                                  waitForAppearance: Bool = true,
                                  waitForChannelQuery: Bool = true,
                                  waitBeforeSending: TimeInterval = 0,
@@ -328,24 +393,34 @@ public class ParticipantRobot {
         if waitBeforeSending > 0 {
             wait(waitBeforeSending)
         }
-        
+
         if waitForChannelQuery {
             server.waitForChannelQueryUpdate()
         }
         
-        startTyping()
-        stopTyping()
-        
+        var parentId: String?
+
+        if inThread {
+            startTypingInThread()
+            stopTypingInThread()
+            parentId = self.threadParentId ?? (self.server.lastMessage?[messageKey.id.rawValue] as? String)
+        } else {
+            startTyping()
+            stopTyping()
+        }
+
         server.websocketMessage(
-            channelId: server.currentChannelId,
+            channelId: inThread ? nil : server.currentChannelId,
             messageId: TestData.uniqueId,
+            parentId: parentId,
+            messageType: !inThread ? .regular : .reply,
             eventType: .messageNew,
             user: participant()
         ) { message in
             var attachments: [[String: Any]] = []
             var file: [String: Any] = [:]
             file[AttachmentCodingKeys.type.rawValue] = type.rawValue
-            
+
             switch type {
             case .image:
                 file[AttachmentCodingKeys.imageURL.rawValue] = Attachments.image
@@ -356,20 +431,37 @@ public class ParticipantRobot {
                 file[AttachmentCodingKeys.assetURL.rawValue] = Attachments.file
                 file[AttachmentFile.CodingKeys.mimeType.rawValue] = "application/pdf"
             }
-            
+
             if type != .image {
                 file[AttachmentFile.CodingKeys.size.rawValue] = 123456
             }
-                
+
             for i in 1...count {
                 file[AttachmentCodingKeys.title.rawValue] = "\(type.rawValue)_\(i)"
                 attachments.append(file)
             }
             
+            if asReplyToFirstMessage || asReplyToLastMessage {
+                let quotedMessage: [String: Any]?
+                if inThread {
+                    quotedMessage = asReplyToLastMessage ? self.server.lastMessageInThread : self.server.firstMessageInThread
+                } else {
+                    quotedMessage = asReplyToLastMessage ? self.server.lastMessage : self.server.firstMessage
+                }
+                let quotedMessageId = quotedMessage?[messageKey.id.rawValue] as? String
+                message?[messageKey.quotedMessageId.rawValue] = quotedMessageId
+                message?[messageKey.quotedMessage.rawValue] = quotedMessage
+            }
+            
+            if inThread {
+                message?[messageKey.parentId.rawValue] = parentId
+                message?[messageKey.showReplyInChannel.rawValue] = alsoInChannel
+            }
+            
             message?[messageKey.attachments.rawValue] = attachments
             return message
         }
-        
+
         if waitForAppearance {
             server.waitForWebsocketMessage(withText: "")
         }

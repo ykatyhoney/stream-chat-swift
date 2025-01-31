@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -7,16 +7,16 @@ import Foundation
 
 // A concrete `ConnectionDetailsProviderDelegate` implementation allowing capturing the delegate calls
 final class ConnectionDetailsProviderDelegate_Spy: ConnectionDetailsProviderDelegate, Spy {
-    var recordedFunctions: [String] = []
+    let spyState = SpyState()
 
-    @Atomic var token: Token?
+    var provideTokenResult: Result<Token, Error>?
     @Atomic var tokenWaiters: [String: (Token?) -> Void] = [:]
 
-    @Atomic var connectionId: ConnectionId?
+    var provideConnectionIdResult: Result<ConnectionId, Error>?
     @Atomic var connectionWaiters: [String: (ConnectionId?) -> Void] = [:]
 
     func clear() {
-        recordedFunctions.removeAll()
+        spyState.clear()
         tokenWaiters.removeAll()
     }
 
@@ -29,8 +29,8 @@ final class ConnectionDetailsProviderDelegate_Spy: ConnectionDetailsProviderDele
             $0[waiterToken] = valueCompletion
         }
 
-        if let connectionId = connectionId {
-            completion(.success(connectionId))
+        if let connectionIdResult = provideConnectionIdResult {
+            completion(connectionIdResult)
         }
     }
 
@@ -43,8 +43,8 @@ final class ConnectionDetailsProviderDelegate_Spy: ConnectionDetailsProviderDele
             $0[waiterToken] = valueCompletion
         }
 
-        if let token = token {
-            completion(.success(token))
+        if let tokenResult = provideTokenResult {
+            completion(tokenResult)
         }
     }
 

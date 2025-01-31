@@ -1,17 +1,18 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
 @testable import StreamChat
 
 final class Logger_Spy: Logger, Spy {
+    let spyState = SpyState()
     var originalLogger: Logger?
-    var recordedFunctions: [String] = []
+    @Atomic var failedAsserts: Int = 0
 
     func injectMock() {
         let logger = LogConfig.logger
-        if logger.self === Logger.self {
+        if type(of: logger) == Logger.self {
             originalLogger = logger
         }
         LogConfig.logger = self
@@ -39,6 +40,7 @@ final class Logger_Spy: Logger, Spy {
         lineNumber: UInt = #line
     ) {
         record()
+        failedAsserts += condition() ? 0 : 1
     }
 
     override func assertionFailure(
@@ -49,5 +51,6 @@ final class Logger_Spy: Logger, Spy {
         lineNumber: UInt = #line
     ) {
         record()
+        failedAsserts += 1
     }
 }

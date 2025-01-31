@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -16,7 +16,7 @@ protocol BackgroundTaskScheduler {
         onEnteringForeground: @escaping () -> Void
     )
     func stopListeningForAppStateUpdates()
-    
+
     var isAppActive: Bool { get }
 }
 
@@ -49,8 +49,9 @@ class IOSBackgroundTaskScheduler: BackgroundTaskScheduler {
         group.wait()
         return isActive
     }
-    
+
     func beginTask(expirationHandler: (() -> Void)?) -> Bool {
+        endTask()
         activeBackgroundTask = app?.beginBackgroundTask { [weak self] in
             expirationHandler?()
             self?.endTask()
@@ -89,17 +90,17 @@ class IOSBackgroundTaskScheduler: BackgroundTaskScheduler {
             object: nil
         )
     }
-    
+
     func stopListeningForAppStateUpdates() {
         onEnteringForeground = {}
         onEnteringBackground = {}
-        
+
         NotificationCenter.default.removeObserver(
             self,
             name: UIApplication.didEnterBackgroundNotification,
             object: nil
         )
-        
+
         NotificationCenter.default.removeObserver(
             self,
             name: UIApplication.didBecomeActiveNotification,
@@ -114,7 +115,7 @@ class IOSBackgroundTaskScheduler: BackgroundTaskScheduler {
     @objc private func handleAppDidBecomeActive() {
         onEnteringForeground()
     }
-    
+
     deinit {
         endTask()
     }

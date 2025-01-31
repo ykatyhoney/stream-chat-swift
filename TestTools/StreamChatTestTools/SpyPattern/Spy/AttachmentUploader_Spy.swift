@@ -1,12 +1,12 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
 import StreamChat
 
 final class AttachmentUploader_Spy: AttachmentUploader, Spy {
-    var recordedFunctions: [String] = []
+    let spyState = SpyState()
 
     var uploadAttachmentProgress: Double?
     var uploadAttachmentResult: Result<UploadedAttachment, Error>?

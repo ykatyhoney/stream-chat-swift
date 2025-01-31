@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -27,6 +27,12 @@ open class ComposerView: _View, ThemeProvider {
     public private(set) lazy var headerView = UIView()
         .withoutAutoresizingMaskConstraints
         .withAccessibilityIdentifier(identifier: "headerView")
+
+    /// A view that displays the link metadata when typing links in the composer.
+    open private(set) lazy var linkPreviewView = components
+        .composerLinkPreviewView.init()
+        .withoutAutoresizingMaskConstraints
+        .withAccessibilityIdentifier(identifier: "linkPreviewView")
 
     /// The container that displays the components below the message input view.
     public private(set) lazy var bottomContainer = UIStackView()
@@ -59,12 +65,19 @@ open class ComposerView: _View, ThemeProvider {
         .withoutAutoresizingMaskConstraints
         .withAccessibilityIdentifier(identifier: "sendButton")
 
+    /// A button to record an VoiceRecording.
+    public private(set) lazy var recordButton: RecordButton = components
+        .recordButton
+        .init()
+        .withoutAutoresizingMaskConstraints
+        .withAccessibilityIdentifier(identifier: "recordButton")
+
     /// A view for showing a cooldown when Slow Mode is active.
     public private(set) lazy var cooldownView: CooldownView = components
         .cooldownView.init()
         .withoutAutoresizingMaskConstraints
         .withAccessibilityIdentifier(identifier: "cooldownView")
-    
+
     /// A button to confirm when editing a message.
     public private(set) lazy var confirmButton: UIButton = components
         .confirmButton.init()
@@ -111,7 +124,7 @@ open class ComposerView: _View, ThemeProvider {
 
     override open func setUpAppearance() {
         super.setUpAppearance()
-        
+
         backgroundColor = appearance.colorPalette.background
         layer.shadowColor = UIColor.systemGray.cgColor
         layer.shadowOpacity = 1
@@ -123,7 +136,7 @@ open class ComposerView: _View, ThemeProvider {
         titleLabel.font = appearance.fonts.bodyBold
         titleLabel.adjustsFontForContentSizeCategory = true
     }
-    
+
     override open func setUpLayout() {
         super.setUpLayout()
         embed(container)
@@ -133,10 +146,12 @@ open class ComposerView: _View, ThemeProvider {
         container.axis = .vertical
         container.alignment = .fill
         container.addArrangedSubview(headerView)
+        container.addArrangedSubview(linkPreviewView)
         container.addArrangedSubview(centerContainer)
         container.addArrangedSubview(bottomContainer)
         bottomContainer.isHidden = true
         headerView.isHidden = true
+        linkPreviewView.isHidden = true
 
         bottomContainer.addArrangedSubview(checkboxControl)
         headerView.addSubview(titleLabel)
@@ -149,7 +164,7 @@ open class ComposerView: _View, ThemeProvider {
         centerContainer.addArrangedSubview(inputMessageView)
         centerContainer.addArrangedSubview(trailingContainer)
         centerContainer.layoutMargins = .zero
-        
+
         trailingContainer.alignment = .center
         trailingContainer.spacing = 0
         trailingContainer.distribution = .equal
@@ -159,6 +174,9 @@ open class ComposerView: _View, ThemeProvider {
         trailingContainer.addArrangedSubview(confirmButton)
         cooldownView.isHidden = true
         confirmButton.isHidden = true
+        if components.isVoiceRecordingEnabled {
+            trailingContainer.addArrangedSubview(recordButton)
+        }
 
         leadingContainer.axis = .horizontal
         leadingContainer.alignment = .center
@@ -176,7 +194,7 @@ open class ComposerView: _View, ThemeProvider {
         titleLabel.centerXAnchor.pin(equalTo: centerXAnchor).isActive = true
         titleLabel.pin(anchors: [.top, .bottom], to: headerView)
 
-        [sendButton, confirmButton]
+        [sendButton, confirmButton, recordButton]
             .forEach { button in
                 button.pin(anchors: [.width], to: 35)
                 button.pin(anchors: [.height], to: 40)

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -17,8 +17,11 @@ public extension ChatChannelMember {
         userRole: UserRole = .user,
         userCreatedAt: Date = .distantPast,
         userUpdatedAt: Date = .distantPast,
+        userDeactivatedAt: Date? = nil,
         lastActiveAt: Date? = nil,
         teams: Set<TeamId> = ["RED", "GREEN"],
+        language: TranslationLanguage? = nil,
+        blockedUserIds: [UserId] = [],
         extraData: [String: RawJSON] = [:],
         memberRole: MemberRole = .member,
         memberCreatedAt: Date = .distantPast,
@@ -26,9 +29,13 @@ public extension ChatChannelMember {
         isInvited: Bool = false,
         inviteAcceptedAt: Date? = nil,
         inviteRejectedAt: Date? = nil,
+        archivedAt: Date? = nil,
+        pinnedAt: Date? = nil,
         isBannedFromChannel: Bool = false,
         banExpiresAt: Date? = nil,
-        isShadowBannedFromChannel: Bool = false
+        isShadowBannedFromChannel: Bool = false,
+        notificationsMuted: Bool = false,
+        memberExtraData: [String: RawJSON] = [:]
     ) -> ChatChannelMember {
         .init(
             id: id,
@@ -40,8 +47,10 @@ public extension ChatChannelMember {
             userRole: userRole,
             userCreatedAt: userCreatedAt,
             userUpdatedAt: userUpdatedAt,
+            deactivatedAt: userDeactivatedAt,
             lastActiveAt: lastActiveAt,
             teams: teams,
+            language: language,
             extraData: extraData,
             memberRole: memberRole,
             memberCreatedAt: memberCreatedAt,
@@ -49,9 +58,13 @@ public extension ChatChannelMember {
             isInvited: isInvited,
             inviteAcceptedAt: inviteAcceptedAt,
             inviteRejectedAt: inviteRejectedAt,
+            archivedAt: archivedAt,
+            pinnedAt: pinnedAt,
             isBannedFromChannel: isBannedFromChannel,
             banExpiresAt: banExpiresAt,
-            isShadowBannedFromChannel: isShadowBannedFromChannel
+            isShadowBannedFromChannel: isShadowBannedFromChannel,
+            notificationsMuted: notificationsMuted,
+            memberExtraData: memberExtraData
         )
     }
 }

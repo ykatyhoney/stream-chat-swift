@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -20,17 +20,47 @@ final class ChannelListFilterScope_Tests: XCTestCase {
         XCTAssertEqual(Key<Date>.createdAt.rawValue, ChannelCodingKeys.createdAt.rawValue)
         XCTAssertEqual(Key<Date>.updatedAt.rawValue, ChannelCodingKeys.updatedAt.rawValue)
         XCTAssertEqual(Key<Date>.deletedAt.rawValue, ChannelCodingKeys.deletedAt.rawValue)
+        XCTAssertEqual(Key<Bool>.disabled.rawValue, ChannelCodingKeys.disabled.rawValue)
         XCTAssertEqual(Key<Bool>.frozen.rawValue, ChannelCodingKeys.frozen.rawValue)
         XCTAssertEqual(Key<Int>.memberCount.rawValue, ChannelCodingKeys.memberCount.rawValue)
         XCTAssertEqual(Key<TeamId>.team.rawValue, ChannelCodingKeys.team.rawValue)
-        
+
         // FilterKeys without corresponding ChannelCodingKeys
         XCTAssertEqual(Key<UserId>.createdBy.rawValue, "created_by_id")
         XCTAssertEqual(Key<Bool>.joined.rawValue, "joined")
         XCTAssertEqual(Key<Bool>.muted.rawValue, "muted")
+        XCTAssertEqual(Key<Bool>.pinned.rawValue, "pinned")
         XCTAssertEqual(Key<InviteFilterValue>.invite.rawValue, "invite")
         XCTAssertEqual(Key<String>.memberName.rawValue, "member.user.name")
         XCTAssertEqual(Key<Date>.lastUpdatedAt.rawValue, "last_updated")
+        XCTAssertEqual(Key<Bool>.archived.rawValue, "archived")
+    }
+
+    func test_filterKeys_haveExpectedKeyPathValueMapper() {
+        XCTAssertEqual(Key<ChannelId>.cid.keyPathString, "cid")
+        XCTAssertEqual(Key<String>.id.keyPathString, "cid")
+        XCTAssertEqual(Key<String>.name.keyPathString, "name")
+        XCTAssertEqual(Key<URL>.imageURL.keyPathString, "imageURL")
+        XCTAssertEqual(Key<ChannelType>.type.keyPathString, "typeRawValue")
+        XCTAssertEqual(Key<Date>.lastMessageAt.keyPathString, "lastMessageAt")
+        XCTAssertEqual(Key<Date>.createdAt.keyPathString, "createdAt")
+        XCTAssertEqual(Key<UserId>.createdBy.keyPathString, "createdBy.id")
+        XCTAssertEqual(Key<Date>.updatedAt.keyPathString, "updatedAt")
+        XCTAssertEqual(Key<Date>.deletedAt.keyPathString, "deletedAt")
+        XCTAssertEqual(Key<Bool>.blocked.keyPathString, "isBlocked")
+        XCTAssertEqual(Key<Bool>.hidden.keyPathString, "isHidden")
+        XCTAssertEqual(Key<Bool>.disabled.keyPathString, "isDisabled")
+        XCTAssertEqual(Key<Bool>.frozen.keyPathString, "isFrozen")
+        XCTAssertEqual(Key<Int>.memberCount.keyPathString, "memberCount")
+        XCTAssertEqual(Key<TeamId>.team.keyPathString, "team")
+        XCTAssertEqual(Key<UserId>.members.keyPathString, "members.user.id")
+        XCTAssertEqual(Key<String>.memberName.keyPathString, "members.user.name")
+        XCTAssertEqual(Key<Date>.lastUpdatedAt.keyPathString, "lastMessageAt")
+        XCTAssertEqual(Key<Bool>.joined.keyPathString, "membership")
+        XCTAssertEqual(Key<Bool>.muted.keyPathString, "mute")
+        XCTAssertEqual(Key<Bool>.archived.keyPathString, "membership.archivedAt")
+        XCTAssertEqual(Key<Bool>.pinned.keyPathString, "membership.pinnedAt")
+        XCTAssertNil(Key<InviteFilterValue>.invite.keyPathString)
     }
 
     func test_containMembersHelper() {
@@ -41,30 +71,12 @@ final class ChannelListFilterScope_Tests: XCTestCase {
             Filter<ChannelListFilterScope>.in(.members, values: ids)
         )
     }
-    
+
     func test_noTeam_helper() {
         XCTAssertEqual(
             Filter<ChannelListFilterScope>.noTeam,
             Filter<ChannelListFilterScope>.equal(.team, to: nil)
         )
-    }
-
-    func test_safeSorting_added() {
-        // Sortings without safe option
-        let sortings: [[Sorting<ChannelListSortingKey>]] = [
-            [.init(key: .createdAt)],
-            [.init(key: .updatedAt), .init(key: .memberCount)]
-        ]
-
-        // Create queries with sortings
-        let queries = sortings.map {
-            ChannelListQuery(filter: .containMembers(userIds: [.unique]), sort: $0)
-        }
-
-        // Assert safe sorting option is added
-        queries.forEach {
-            XCTAssertEqual($0.sort.last?.key, Sorting<ChannelListSortingKey>(key: .cid).key)
-        }
     }
 
     func test_hiddenFilter_valueIsDetected() {
@@ -88,7 +100,7 @@ final class ChannelListFilterScope_Tests: XCTestCase {
         let id = "theid"
         let query = ChannelListQuery(
             filter: .containMembers(userIds: [id]),
-            sort: [Sorting<ChannelListSortingKey>(key: .cid)],
+            sort: [.init(key: .cid)],
             pageSize: 1,
             messagesLimit: 2,
             membersLimit: 3

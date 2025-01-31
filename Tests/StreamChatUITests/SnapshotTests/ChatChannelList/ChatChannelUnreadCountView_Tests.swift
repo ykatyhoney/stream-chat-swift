@@ -1,10 +1,11 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
-import StreamChatTestTools
+@testable import StreamChatTestTools
 @testable import StreamChatUI
+import StreamSwiftTestHelpers
 import XCTest
 
 final class ChatChannelUnreadCountView_Tests: XCTestCase {
@@ -12,13 +13,13 @@ final class ChatChannelUnreadCountView_Tests: XCTestCase {
         let view = ChatChannelUnreadCountView().withoutAutoresizingMaskConstraints
         AssertSnapshot(view)
     }
-    
+
     func test_defaultAppearance() {
         let view = ChatChannelUnreadCountView().withoutAutoresizingMaskConstraints
-        
+
         view.content = .mock(messages: 10)
         AssertSnapshot(view, suffix: "2digits")
-        
+
         view.content = .mock(messages: 100)
         AssertSnapshot(view, suffix: "3digits")
     }
@@ -38,7 +39,7 @@ final class ChatChannelUnreadCountView_Tests: XCTestCase {
         class TestView: ChatChannelUnreadCountView {
             override func setUpAppearance() {
                 super.setUpAppearance()
-                backgroundColor = .blue
+                badgeView.backgroundColor = .blue
             }
 
             override func setUpLayout() {

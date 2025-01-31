@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -7,6 +7,12 @@ import StreamChat
 
 /// The object that acts as the data source of the message list.
 public protocol ChatMessageListVCDataSource: AnyObject {
+    /// Asks the data source if the first (newest) page is currently loaded.
+    var isFirstPageLoaded: Bool { get }
+    
+    /// Asks the data source if the last (oldest) page is currently loaded.
+    var isLastPageLoaded: Bool { get }
+
     /// Asks the data source to return all the available messages.
     var messages: [ChatMessage] { get set }
 
@@ -35,4 +41,16 @@ public protocol ChatMessageListVCDataSource: AnyObject {
         _ vc: ChatMessageListVC,
         messageLayoutOptionsAt indexPath: IndexPath
     ) -> ChatMessageLayoutOptions
+}
+
+/// Default implementations to avoid breaking changes.
+/// Ideally should be implemented by customers who use the `ChatMessageListVC` directly (Advanced).
+public extension ChatMessageListVCDataSource {
+    var isFirstPageLoaded: Bool {
+        true
+    }
+
+    var isLastPageLoaded: Bool {
+        false
+    }
 }

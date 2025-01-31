@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -43,8 +43,8 @@ final class MessageEvents_IntegrationTests: XCTestCase {
         let unwrappedEvent = try XCTUnwrap(event)
         let completionCalled = expectation(description: "completion called")
         client.eventNotificationCenter.process(unwrappedEvent) { completionCalled.fulfill() }
-        
-        wait(for: [completionCalled], timeout: 1)
+
+        wait(for: [completionCalled], timeout: defaultTimeout)
 
         AssertAsync {
             Assert.willNotBeNil(self.client.databaseContainer.viewContext.message(id: "1ff9f6d0-df70-4703-aef0-379f95ad7366"))
@@ -124,8 +124,8 @@ final class MessageEvents_IntegrationTests: XCTestCase {
         let unwrappedEvent = try XCTUnwrap(event)
         let completionCalled = expectation(description: "completion called")
         client.eventNotificationCenter.process(unwrappedEvent) { completionCalled.fulfill() }
-        
-        wait(for: [completionCalled], timeout: 1)
+
+        wait(for: [completionCalled], timeout: defaultTimeout)
 
         AssertAsync {
             Assert.willNotBeNil(self.client.databaseContainer.viewContext.message(id: "042772db-4af2-460d-beaa-1e49d1b8e3b9"))
@@ -146,7 +146,7 @@ final class MessageEvents_IntegrationTests: XCTestCase {
             user: .dummy(userId: .unique),
             message: .dummy(messageId: .unique, authorUserId: .unique),
             watcherCount: 10,
-            unreadCount: .init(channels: 14, messages: 12),
+            unreadCount: .init(channels: 14, messages: 12, threads: 10),
             createdAt: .unique
         )
 
@@ -159,6 +159,8 @@ final class MessageEvents_IntegrationTests: XCTestCase {
         // Save channel to database since it must exist when we get this event
         _ = try session.saveChannel(payload: .dummy(cid: cid), query: nil, cache: nil)
 
+        _ = try session.saveCurrentUser(payload: .dummy(userPayload: .dummy(userId: .unique), unreadCount: eventPayload.unreadCount))
+
         // Save event to database
         try session.saveUser(payload: eventPayload.user!)
         _ = try session.saveMessage(payload: eventPayload.message!, for: cid, cache: nil)
@@ -169,7 +171,7 @@ final class MessageEvents_IntegrationTests: XCTestCase {
         XCTAssertEqual(event.user.id, eventPayload.user?.id)
         XCTAssertEqual(event.message.id, eventPayload.message?.id)
         XCTAssertEqual(event.watcherCount, eventPayload.watcherCount)
-        XCTAssertEqual(event.unreadCount, eventPayload.unreadCount)
+        XCTAssert(event.unreadCount?.isEqual(toPayload: eventPayload.unreadCount) == true)
         XCTAssertEqual(event.createdAt, eventPayload.createdAt)
     }
 
@@ -248,12 +250,24 @@ final class MessageEvents_IntegrationTests: XCTestCase {
         let session = DatabaseContainer_Spy(kind: .inMemory).viewContext
 
         // Create event payload
+        let cid = ChannelId.unique
+        let parentMessageId = MessageId.unique
         let eventPayload = EventPayload(
             eventType: .messageRead,
-            cid: .unique,
+            cid: cid,
             user: .dummy(userId: .unique),
-            unreadCount: .init(channels: 12, messages: 44),
-            createdAt: .unique
+            unreadCount: .init(channels: 12, messages: 44, threads: 10),
+            createdAt: .unique,
+            threadDetails: .success(.init(
+                cid: cid,
+                parentMessageId: parentMessageId,
+                replyCount: 3,
+                participantCount: 3,
+                lastMessageAt: .unique,
+                createdAt: .unique,
+                updatedAt: .unique,
+                title: "Test"
+            ))
         )
 
         // Create event DTO
@@ -265,6 +279,11 @@ final class MessageEvents_IntegrationTests: XCTestCase {
         // Save channel to database since it must exist when we get this event
         _ = try session.saveChannel(payload: .dummy(cid: eventPayload.cid!), query: nil, cache: nil)
 
+        // Save the thread to the database
+        _ = try session.saveThread(payload: .dummy(parentMessageId: parentMessageId, channel: .dummy(cid: cid)), cache: nil)
+
+        _ = try session.saveCurrentUser(payload: .dummy(userPayload: .dummy(userId: .unique), unreadCount: eventPayload.unreadCount))
+
         // Save event to database
         try session.saveUser(payload: eventPayload.user!)
 
@@ -272,7 +291,16 @@ final class MessageEvents_IntegrationTests: XCTestCase {
         let event = try XCTUnwrap(dto.toDomainEvent(session: session) as? MessageReadEvent)
         XCTAssertEqual(event.cid, eventPayload.cid)
         XCTAssertEqual(event.user.id, eventPayload.user?.id)
-        XCTAssertEqual(event.unreadCount, eventPayload.unreadCount)
+        XCTAssert(event.unreadCount?.isEqual(toPayload: eventPayload.unreadCount) == true)
         XCTAssertEqual(event.createdAt, eventPayload.createdAt)
+        XCTAssertNotNil(event.thread)
+    }
+}
+
+extension UnreadCount {
+    func isEqual(toPayload payload: UnreadCountPayload?) -> Bool {
+        channels == payload?.channels &&
+            threads == payload?.threads &&
+            messages == payload?.messages
     }
 }

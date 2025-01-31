@@ -1,11 +1,10 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
 import SwiftUI
 
-@available(iOS 13, *)
 extension ChatMessageSearchController {
     /// A wrapper object that exposes the controller variables in the form of `ObservableObject` to be used in SwiftUI.
     public var observableObject: ObservableObject { .init(controller: self) }
@@ -33,7 +32,6 @@ extension ChatMessageSearchController {
     }
 }
 
-@available(iOS 13, *)
 extension ChatMessageSearchController.ObservableObject: ChatMessageSearchControllerDelegate {
     public func controller(_ controller: ChatMessageSearchController, didChangeMessages changes: [ListChange<ChatMessage>]) {
         messages = controller.messages

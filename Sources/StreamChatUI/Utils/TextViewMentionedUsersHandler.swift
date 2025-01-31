@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -23,7 +23,11 @@ class TextViewMentionedUsersHandler {
         else {
             return nil
         }
-        let name = String(text[range].replacingOccurrences(of: "@", with: ""))
-        return mentionedUsers.first(where: { $0.name == name })
+
+        let mention = String(text[range])
+        return mentionedUsers.first(where: {
+            let name = $0.name ?? $0.id
+            return mention.contains(name)
+        })
     }
 }

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
@@ -7,30 +7,37 @@
 import XCTest
 
 final class MessageSender_Tests: XCTestCase {
-    var messageRepository: MessageRepository_Spy!
+    var messageRepository: MessageRepository_Mock!
     var webSocketClient: WebSocketClient_Mock!
     var apiClient: APIClient_Spy!
     var database: DatabaseContainer_Spy!
-    
+    var eventsNotificationCenter: EventNotificationCenter_Mock!
+
     var sender: MessageSender!
-    
+
     var cid: ChannelId!
-    
+
     override func setUp() {
         super.setUp()
 
         webSocketClient = WebSocketClient_Mock()
         apiClient = APIClient_Spy()
         database = DatabaseContainer_Spy()
-        messageRepository = MessageRepository_Spy(database: database, apiClient: apiClient)
-        sender = MessageSender(messageRepository: messageRepository, database: database, apiClient: apiClient)
-        
+        messageRepository = MessageRepository_Mock(database: database, apiClient: apiClient)
+        eventsNotificationCenter = EventNotificationCenter_Mock(database: database)
+        sender = MessageSender(
+            messageRepository: messageRepository,
+            eventsNotificationCenter: eventsNotificationCenter,
+            database: database,
+            apiClient: apiClient
+        )
+
         cid = .unique
-        
+
         try! database.createCurrentUser()
         try! database.createChannel(cid: cid)
     }
-    
+
     override func tearDown() {
         apiClient.cleanUp()
         messageRepository.clear()
@@ -40,6 +47,7 @@ final class MessageSender_Tests: XCTestCase {
             Assert.canBeReleased(&webSocketClient)
             Assert.canBeReleased(&messageRepository)
             Assert.canBeReleased(&apiClient)
+            Assert.canBeReleased(&eventsNotificationCenter)
             Assert.canBeReleased(&database)
         }
 
@@ -47,11 +55,12 @@ final class MessageSender_Tests: XCTestCase {
         webSocketClient = nil
         messageRepository = nil
         apiClient = nil
+        eventsNotificationCenter = nil
         database = nil
 
         super.tearDown()
     }
-    
+
     func test_senderSendsMessage_withPendingSendLocalState_and_uploadedOrEmptyAttachments() throws {
         let message1Id: MessageId = .unique
         var message2Id: MessageId!
@@ -66,10 +75,14 @@ final class MessageSender_Tests: XCTestCase {
         try database.writeSynchronously { session in
             let message1 = try session.createNewMessage(
                 in: self.cid,
+                messageId: .unique,
                 text: "Message pending send without attachments",
                 pinning: nil,
                 quotedMessageId: nil,
                 isSilent: false,
+                isSystem: false,
+                skipPush: false,
+                skipEnrichUrl: false,
                 extraData: [:]
             )
             message1.localMessageState = .pendingSend
@@ -77,10 +90,14 @@ final class MessageSender_Tests: XCTestCase {
 
             let message2 = try session.createNewMessage(
                 in: self.cid,
+                messageId: .unique,
                 text: "Message pending send with attachments",
                 pinning: nil,
                 quotedMessageId: nil,
                 isSilent: false,
+                isSystem: false,
+                skipPush: false,
+                skipEnrichUrl: false,
                 attachments: [
                     .mockFile,
                     .mockImage,
@@ -94,10 +111,14 @@ final class MessageSender_Tests: XCTestCase {
             // Create 3rd message
             try session.createNewMessage(
                 in: self.cid,
+                messageId: .unique,
                 text: "Message without local state",
                 pinning: nil,
                 quotedMessageId: nil,
                 isSilent: false,
+                isSystem: false,
+                skipPush: false,
+                skipEnrichUrl: false,
                 attachments: [],
                 extraData: [:]
             )
@@ -127,17 +148,21 @@ final class MessageSender_Tests: XCTestCase {
         }
         XCTAssertCall("sendMessage(with:completion:)", on: messageRepository, times: 2)
     }
-    
+
     func test_sender_sendsMessage_withUploadedAttachments() throws {
         var messageId: MessageId!
-        
+
         try database.writeSynchronously { session in
             let message = try session.createNewMessage(
                 in: self.cid,
+                messageId: .unique,
                 text: "Message pending send",
                 pinning: nil,
                 quotedMessageId: nil,
                 isSilent: false,
+                isSystem: false,
+                skipPush: false,
+                skipEnrichUrl: false,
                 attachments: [
                     .init(payload: TestAttachmentPayload.unique),
                     .init(payload: TestAttachmentPayload.unique)
@@ -147,21 +172,25 @@ final class MessageSender_Tests: XCTestCase {
             message.localMessageState = .pendingSend
             messageId = message.id
         }
-        
+
         AssertAsync.willBeTrue(messageRepository.sendMessageIds.contains(where: { $0 == messageId }))
         XCTAssertCall("sendMessage(with:completion:)", on: messageRepository, times: 1)
     }
-    
+
     func test_sender_sendsMessage_withBothNotUploadableAttachmentAndUploadedAttachments() throws {
         var messageId: MessageId!
-        
+
         try database.writeSynchronously { session in
             let message = try session.createNewMessage(
                 in: self.cid,
+                messageId: .unique,
                 text: "Message pending send",
                 pinning: nil,
                 quotedMessageId: nil,
                 isSilent: false,
+                isSystem: false,
+                skipPush: false,
+                skipEnrichUrl: false,
                 attachments: [
                     .mockImage,
                     .init(payload: TestAttachmentPayload.unique)
@@ -171,7 +200,7 @@ final class MessageSender_Tests: XCTestCase {
             message.localMessageState = .pendingSend
             messageId = message.id
         }
-        
+
         AssertAsync.staysTrue(messageRepository.sendMessageIds.isEmpty)
 
         // Simulate attachment seed uploaded
@@ -195,10 +224,14 @@ final class MessageSender_Tests: XCTestCase {
         try database.writeSynchronously { session in
             let message1 = try session.createNewMessage(
                 in: self.cid,
+                messageId: .unique,
                 text: "Message pending send 1",
                 pinning: nil,
                 quotedMessageId: nil,
                 isSilent: false,
+                isSystem: false,
+                skipPush: false,
+                skipEnrichUrl: false,
                 extraData: [:]
             )
             message1.localMessageState = .pendingSend
@@ -206,10 +239,14 @@ final class MessageSender_Tests: XCTestCase {
 
             let message2 = try session.createNewMessage(
                 in: self.cid,
+                messageId: .unique,
                 text: "Message pending send 2",
                 pinning: nil,
                 quotedMessageId: nil,
                 isSilent: false,
+                isSystem: false,
+                skipPush: false,
+                skipEnrichUrl: false,
                 extraData: [:]
             )
             message2.localMessageState = .pendingSend
@@ -217,10 +254,14 @@ final class MessageSender_Tests: XCTestCase {
 
             let message3 = try session.createNewMessage(
                 in: self.cid,
+                messageId: .unique,
                 text: "Message pending send 3",
                 pinning: nil,
                 quotedMessageId: nil,
                 isSilent: false,
+                isSystem: false,
+                skipPush: false,
+                skipEnrichUrl: false,
                 extraData: [:]
             )
             message3.localMessageState = .pendingSend
@@ -247,12 +288,12 @@ final class MessageSender_Tests: XCTestCase {
         // Check the 3rd API call
         AssertAsync.willBeEqual(messageRepository.sendMessageCalls.first?.key, message3Id)
     }
-    
+
     func test_senderSendsMessages_forMultipleChannelsInParalel_butStillInTheCorrectOrder() throws {
         let cidA = cid!
         let cidB = ChannelId.unique
         try database.createChannel(cid: cidB)
-        
+
         var channelA_message1: MessageId!
         var channelA_message2: MessageId!
 
@@ -263,21 +304,29 @@ final class MessageSender_Tests: XCTestCase {
         try database.writeSynchronously { session in
             let messageA1 = try session.createNewMessage(
                 in: cidA,
+                messageId: .unique,
                 text: "Channel A message 1",
                 pinning: nil,
                 quotedMessageId: nil,
                 isSilent: false,
+                isSystem: false,
+                skipPush: false,
+                skipEnrichUrl: false,
                 extraData: [:]
             )
             messageA1.localMessageState = .pendingSend
             channelA_message1 = messageA1.id
-            
+
             let messageA2 = try session.createNewMessage(
                 in: cidA,
+                messageId: .unique,
                 text: "Channel A message 2",
                 pinning: nil,
                 quotedMessageId: nil,
                 isSilent: false,
+                isSystem: false,
+                skipPush: false,
+                skipEnrichUrl: false,
                 extraData: [:]
             )
             messageA2.localMessageState = .pendingSend
@@ -285,27 +334,35 @@ final class MessageSender_Tests: XCTestCase {
 
             let messageB1 = try session.createNewMessage(
                 in: cidB,
+                messageId: .unique,
                 text: "Channel B message 1",
                 pinning: nil,
                 quotedMessageId: nil,
                 isSilent: false,
+                isSystem: false,
+                skipPush: false,
+                skipEnrichUrl: false,
                 extraData: [:]
             )
             messageB1.localMessageState = .pendingSend
             channelB_message1 = messageB1.id
-            
+
             let messageB2 = try session.createNewMessage(
                 in: cidB,
+                messageId: .unique,
                 text: "Channel B message 2",
                 pinning: nil,
                 quotedMessageId: nil,
                 isSilent: false,
+                isSystem: false,
+                skipPush: false,
+                skipEnrichUrl: false,
                 extraData: [:]
             )
             messageB2.localMessageState = .pendingSend
             channelB_message2 = messageB2.id
         }
-        
+
         // Wait for 2 repository calls to be made
         AssertAsync.willBeEqual(messageRepository.sendMessageCalls.count, 2)
         XCTAssertTrue(messageRepository.sendMessageCalls.keys.contains(channelA_message1))
@@ -316,7 +373,7 @@ final class MessageSender_Tests: XCTestCase {
             let message = ChatMessage.mock(id: $0.key, cid: cid, text: "Message sent", author: .unique)
             $0.value(.success(message))
         }
-                
+
         // Wait for 2 more repository calls to be made
         AssertAsync.willBeEqual(messageRepository.sendMessageCalls.count, 4)
         XCTAssertTrue(messageRepository.sendMessageCalls.keys.contains(channelA_message2))
@@ -329,18 +386,178 @@ final class MessageSender_Tests: XCTestCase {
         }
     }
 
-    // MARK: - Life cycle tests
+    func test_sender_sendsMessage_whenError_sendsEvent() throws {
+        var messageId: MessageId!
+
+        struct MockError: Error {}
+        messageRepository.sendMessageResult = .failure(.failedToSendMessage(MockError()))
+
+        try database.writeSynchronously { session in
+            let message = try session.createNewMessage(
+                in: self.cid,
+                messageId: .unique,
+                text: "Message pending send",
+                pinning: nil,
+                quotedMessageId: nil,
+                isSilent: false,
+                isSystem: false,
+                skipPush: false,
+                skipEnrichUrl: false,
+                attachments: [
+                    .init(payload: TestAttachmentPayload.unique),
+                    .init(payload: TestAttachmentPayload.unique)
+                ],
+                extraData: [:]
+            )
+            message.localMessageState = .pendingSend
+            messageId = message.id
+        }
+
+        AssertAsync.willBeTrue(messageRepository.sendMessageIds.contains(where: { $0 == messageId }))
+        AssertAsync.willBeTrue(eventsNotificationCenter.mock_processCalledWithEvents.first is NewMessageErrorEvent)
+        XCTAssertCall("sendMessage(with:completion:)", on: messageRepository, times: 1)
+    }
     
+    func test_senderSendsMessages_forwardsPendingMessagesToOfflineHandlingOnConnectionError() throws {
+        // Sender with non-mock message repository
+        let nonMockMessageRepository = MessageRepository(database: database, apiClient: apiClient)
+        sender = MessageSender(
+            messageRepository: nonMockMessageRepository,
+            eventsNotificationCenter: eventsNotificationCenter,
+            database: database,
+            apiClient: apiClient
+        )
+        var queueOfflineRequestCounter = 0
+        let offlineQueuingExpectation = XCTestExpectation(description: "2, 3, 4, 5 queued")
+        apiClient.queueOfflineRequest = { _ in
+            queueOfflineRequestCounter += 1
+            guard queueOfflineRequestCounter == 4 else { return }
+            offlineQueuingExpectation.fulfill()
+        }
+        
+        // At the end of test all 5 are expected to finish successfully
+        let messageIds = (1...5).map { "\($0)" }
+        
+        try database.writeSynchronously { session in
+            for id in messageIds {
+                try self.createMessage(id: id, in: session)
+            }
+        }
+        
+        // First: success
+        apiClient.waitForRequest()
+        try resumeAPIRequestAndWaitForLocalStateChange(messageId: "1", success: true)
+        
+        // Second: connection error
+        apiClient.waitForRequest()
+        try resumeAPIRequestAndWaitForLocalStateChange(messageId: "2", success: false)
+        
+        // We use mocked API client which does not do the automatic forwarding, therefore we simulate it here
+        apiClient.queueOfflineRequest?(DataEndpoint(path: .sendMessage(cid), method: .post))
+        
+        // Since connection error was received, all the remaining queued messages are sent directly to offline repository
+        wait(for: [offlineQueuingExpectation], timeout: defaultTimeout)
+        
+        // Verify states (one successful, others failing)
+        try database.readSynchronously { session in
+            let localMessageStates = messageIds.map { session.message(id: $0)?.localMessageState }
+            let expected: [LocalMessageState?] = [nil, .sendingFailed, .sendingFailed, .sendingFailed, .sendingFailed]
+            XCTAssertEqual(expected, localMessageStates)
+        }
+        
+        // Offline repository is now responsible of sending the requests
+    }
+
+    // MARK: - Life cycle tests
+
     func test_sender_doesNotRetainItself() throws {
         let messageId: MessageId = .unique
-        
+
         // Create a message with pending state
         try database.createMessage(id: messageId, cid: cid, text: "Message pending send", localState: .pendingSend)
-        
+
         // Wait for the repository call
         AssertAsync.willBeTrue(messageRepository.sendMessageCalls.count == 1)
-        
+
         // Assert sender can be released even though network response hasn't come yet
         AssertAsync.canBeReleased(&sender)
+    }
+
+    // MARK: Rescue messages
+
+    func test_sender_startsMessagesRescueOnInit() throws {
+        // Given
+        let channelId = ChannelId.unique
+        let messageId = MessageId.unique
+
+        try database.writeSynchronously { session in
+            try session.saveChannel(payload: .dummy(channel: .dummy(cid: channelId)))
+            let message = try session.saveMessage(
+                payload: .dummy(messageId: messageId),
+                for: channelId,
+                syncOwnReactions: false,
+                cache: nil
+            )
+            message.localMessageState = .sending
+        }
+
+        let initialMessages = MessageDTO.loadSendingMessages(context: database.viewContext)
+        XCTAssertEqual(initialMessages.count, 1)
+        XCTAssertEqual(initialMessages.first?.id, messageId)
+        XCTAssertEqual(initialMessages.first?.localMessageState, .sending)
+
+        // When
+        let sessionMock = DatabaseSessionRescueListener(underlyingSession: database.writableContext)
+        let mockDatabase = DatabaseContainer_Spy(sessionMock: sessionMock)
+        sender = .init(
+            messageRepository: messageRepository,
+            eventsNotificationCenter: EventNotificationCenter_Mock(database: mockDatabase),
+            database: mockDatabase,
+            apiClient: apiClient
+        )
+
+        // Then
+        wait(for: [sessionMock.rescueMessagesExpectation], timeout: defaultTimeout)
+    }
+    
+    // MARK: -
+    
+    @discardableResult func createMessage(id: MessageId, in session: DatabaseSession) throws -> MessageId {
+        let dto = try session.createNewMessage(
+            in: cid,
+            messageId: id,
+            text: "\(id)",
+            pinning: nil,
+            quotedMessageId: nil,
+            isSystem: false,
+            skipPush: false,
+            skipEnrichUrl: false
+        )
+        dto.localMessageState = .pendingSend
+        return dto.id
+    }
+    
+    private func resumeAPIRequestAndWaitForLocalStateChange(messageId: MessageId, success: Bool) throws {
+        let localStateExpectation = XCTestExpectation(description: "\(messageId) - local state change")
+        database.didWrite = {
+            // Extra delay for allowing MessageSender to run the MessageRepository's completion
+            DispatchQueue.main.async {
+                localStateExpectation.fulfill()
+            }
+        }
+        if success {
+            apiClient.test_simulateResponse(.success(MessagePayload.Boxed(message: .dummy(messageId: messageId, text: "processed", cid: cid))))
+        } else {
+            apiClient.test_simulateResponse(Result<MessagePayload.Boxed, Error>.failure(NSError(domain: NSURLErrorDomain, code: NSURLErrorNetworkConnectionLost)))
+        }
+        wait(for: [localStateExpectation], timeout: defaultTimeout)
+    }
+}
+
+private class DatabaseSessionRescueListener: DatabaseSession_Mock {
+    let rescueMessagesExpectation = XCTestExpectation(description: "rescue messages")
+
+    override func rescueMessagesStuckInSending() {
+        rescueMessagesExpectation.fulfill()
     }
 }

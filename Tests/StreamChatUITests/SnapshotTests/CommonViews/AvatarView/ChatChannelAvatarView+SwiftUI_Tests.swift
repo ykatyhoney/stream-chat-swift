@@ -1,19 +1,19 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
 @testable import StreamChatTestTools
 import StreamChatUI
+import StreamSwiftTestHelpers
 import SwiftUI
 import XCTest
 
-@available(iOS 13.0, *)
 final class ChatChannelAvatarView_SwiftUI_Tests: XCTestCase {
     func test_injectedSwiftUIView() {
         struct CustomChatChannelAvatarView: ChatChannelAvatarView.SwiftUIView {
             @ObservedObject var dataSource: ChatChannelAvatarView.ObservedObject<Self>
-            
+
             init(dataSource: ChatChannelAvatarView.ObservedObject<Self>) {
                 self.dataSource = dataSource
             }

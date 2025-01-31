@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -12,7 +12,9 @@ extension MemberPayload {
         createdAt: Date = .unique,
         updatedAt: Date = .unique,
         role: MemberRole = .member,
-        isMemberBanned: Bool = false
+        isMemberBanned: Bool = false,
+        archivedAt: Date? = nil,
+        pinnedAt: Date? = nil
     ) -> MemberPayload {
         .init(
             user: user,
@@ -20,7 +22,9 @@ extension MemberPayload {
             role: role,
             createdAt: createdAt,
             updatedAt: updatedAt,
-            isBanned: isMemberBanned
+            isBanned: isMemberBanned,
+            archivedAt: archivedAt,
+            pinnedAt: pinnedAt
         )
     }
 }

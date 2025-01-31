@@ -1,59 +1,74 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
 
 // MARK: - JSONDecoder Stream
 
-final class StreamJSONDecoder: JSONDecoder {
+final class StreamJSONDecoder: JSONDecoder, @unchecked Sendable {
     let iso8601formatter: ISO8601DateFormatter
     let dateCache: NSCache<NSString, NSDate>
-    
+
     override convenience init() {
         let iso8601formatter = ISO8601DateFormatter()
         iso8601formatter.formatOptions = [.withFractionalSeconds, .withInternetDateTime]
-        
+
         let dateCache = NSCache<NSString, NSDate>()
         dateCache.countLimit = 5000 // We cache at most 5000 dates, which gives good enough performance
-        
-        self.init(dateFormatter: iso8601formatter, dateCache: dateCache)
+
+        self.init(
+            dateFormatter: iso8601formatter,
+            dateCache: dateCache
+        )
     }
-    
-    init(dateFormatter: ISO8601DateFormatter, dateCache: NSCache<NSString, NSDate>) {
+
+    init(
+        dateFormatter: ISO8601DateFormatter,
+        dateCache: NSCache<NSString, NSDate>
+    ) {
         iso8601formatter = dateFormatter
         self.dateCache = dateCache
-        
+
         super.init()
-        
+
         dateDecodingStrategy = .custom { [weak self] decoder throws -> Date in
             let container = try decoder.singleValueContainer()
             let dateString: String = try container.decode(String.self)
-            
+
             if let date = self?.dateCache.object(forKey: dateString as NSString) {
                 return date.bridgeDate
             }
-            
-            if let date = self?.iso8601formatter.date(from: dateString) {
+
+            if let date = self?.iso8601formatter.dateWithMicroseconds(from: dateString) {
                 self?.dateCache.setObject(date.bridgeDate, forKey: dateString as NSString)
                 return date
             }
-            
+
             if let date = DateFormatter.Stream.rfc3339Date(from: dateString) {
                 self?.dateCache.setObject(date.bridgeDate, forKey: dateString as NSString)
                 return date
             }
-            
+
             // Fail
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date: \(dateString)")
         }
     }
 }
 
+extension StreamJSONDecoder {
+    /// A convenience method returning RawJSON dictionary.
+    func decodeRawJSON(from data: Data?) throws -> [String: RawJSON] {
+        guard let data, !data.isEmpty else { return [:] }
+        let rawJSON = try decode([String: RawJSON].self, from: data)
+        return rawJSON
+    }
+}
+
 extension JSONDecoder {
     /// A default `JSONDecoder`.
-    static var `default`: JSONDecoder = stream
-    
+    static let `default`: JSONDecoder = stream
+
     /// A Stream Chat JSON decoder.
     static let stream: StreamJSONDecoder = {
         StreamJSONDecoder()
@@ -64,17 +79,17 @@ extension JSONDecoder {
 
 extension JSONEncoder {
     /// A default `JSONEncoder`.
-    static var `default`: JSONEncoder = stream
+    static let `default`: JSONEncoder = stream
     /// A default gzip `JSONEncoder`.
-    static var defaultGzip: JSONEncoder = streamGzip
-    
+    static let defaultGzip: JSONEncoder = streamGzip
+
     /// A Stream Chat JSON encoder.
     static let stream: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .stream
         return encoder
     }()
-    
+
     /// A Stream Chat JSON encoder with a gzipped content.
     static let streamGzip: JSONEncoder = {
         let encoder = JSONEncoder()
@@ -120,7 +135,7 @@ extension DateFormatter {
             let removedTimezoneWrapperString = uppercaseString.replacingOccurrences(of: RFC3339TimezoneWrapper, with: "-0000")
             return gmtDateFormatters.lazy.compactMap { $0.date(from: removedTimezoneWrapperString) }.first
         }
-        
+
         /// Creates and returns an RFC 3339 formatted string representation of the specified date.
         ///
         /// - Parameter date: The date to be represented.
@@ -167,11 +182,29 @@ extension DateFormatter {
     }
 }
 
+extension ISO8601DateFormatter {
+    func dateWithMicroseconds(from string: String) -> Date? {
+        guard let date = date(from: string) else { return nil }
+        // Manually parse microseconds and nanoseconds, because ISO8601DateFormatter is limited to ms.
+        // Note that Date's timeIntervalSince1970 rounds to 0.000_000_1
+        guard let index = string.lastIndex(of: ".") else { return date }
+        let range = string.suffix(from: index)
+            .dropFirst(4) // . and ms part
+            .dropLast() // Z
+        var fractionWithoutMilliseconds = String(range)
+        if fractionWithoutMilliseconds.count < 3 {
+            fractionWithoutMilliseconds = fractionWithoutMilliseconds.padding(toLength: 3, withPad: "0", startingAt: 0)
+        }
+        guard let microseconds = TimeInterval("0.000".appending(fractionWithoutMilliseconds)) else { return date }
+        return Date(timeIntervalSince1970: date.timeIntervalSince1970 + microseconds)
+    }
+}
+
 // MARK: - Helper AnyEncodable
 
 struct AnyEncodable: Encodable {
     let encodable: Encodable
-    
+
     init(_ encodable: Encodable) {
         self.encodable = encodable
     }

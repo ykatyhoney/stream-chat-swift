@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -15,24 +15,34 @@ extension Endpoint {
             body: ["payload": query]
         )
     }
-    
+
     static func updateUser(
         id: UserId,
-        payload: UserUpdateRequestBody
-    ) -> Endpoint<UserUpdateResponse> {
+        payload: UserUpdateRequestBody,
+        unset: [String]
+    ) -> Endpoint<CurrentUserUpdateResponse> {
         let users: [String: AnyEncodable] = [
             "id": AnyEncodable(id),
-            "set": AnyEncodable(payload)
+            "set": AnyEncodable(payload),
+            "unset": AnyEncodable(unset)
         ]
         let body: [String: AnyEncodable] = [
             "users": AnyEncodable([users])
         ]
-        return Endpoint<UserUpdateResponse>(
+        return Endpoint<CurrentUserUpdateResponse>(
             path: .users,
             method: .patch,
             queryItems: nil,
             requiresConnectionId: false,
             body: body
+        )
+    }
+
+    static func unreads() -> Endpoint<CurrentUserUnreadsPayload> {
+        .init(
+            path: .unread,
+            method: .get,
+            body: nil
         )
     }
 }

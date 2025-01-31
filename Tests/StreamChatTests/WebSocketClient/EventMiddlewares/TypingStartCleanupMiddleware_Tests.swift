@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
@@ -11,35 +11,35 @@ final class TypingStartCleanupMiddleware_Tests: XCTestCase {
     var time: VirtualTime!
     // The database is not really used in the middleware but it's a requirement by the protocol
     // to provide a database session
-    var database: DatabaseContainer!
-    
-    override func setUp() {
+    var database: DatabaseContainer_Spy!
+
+    override func setUpWithError() throws {
         super.setUp()
 
         currentUser = .mock(id: "Luke")
-        
+
         time = VirtualTime()
         VirtualTimeTimer.time = time
 
         database = DatabaseContainer_Spy()
+        try database.writeSynchronously { session in
+            try session.saveCurrentUser(payload: .dummy(userId: self.currentUser.id, role: .admin))
+        }
     }
 
     override func tearDown() {
-        AssertAsync.canBeReleased(&database)
-
         database = nil
+        AssertAsync.canBeReleased(&database)
         currentUser = nil
         VirtualTimeTimer.invalidate()
         time = nil
-
         super.tearDown()
     }
 
-    func test_stopTypingEvent_notSentForExcludedUsers() {
+    func test_stopTypingEvent_notSentForCurrentUser() {
         // Create a middleware and store emitted events.
         var emittedEvents: [Event] = []
         var middleware: TypingStartCleanupMiddleware? = .init(
-            excludedUserIds: { [self.currentUser.id] },
             emitEvent: { emittedEvents.append($0) }
         )
         middleware?.timer = VirtualTimeTimer.self
@@ -68,7 +68,6 @@ final class TypingStartCleanupMiddleware_Tests: XCTestCase {
         // Create a middleware and store emitted events.
         var emittedEvents: [Event] = []
         var middleware: TypingStartCleanupMiddleware? = .init(
-            excludedUserIds: { [self.currentUser.id] },
             emitEvent: { emittedEvents.append($0) }
         )
         middleware?.timer = VirtualTimeTimer.self

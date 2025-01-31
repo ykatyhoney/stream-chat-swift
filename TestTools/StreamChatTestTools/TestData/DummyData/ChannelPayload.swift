@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -14,6 +14,7 @@ extension ChannelPayload {
         members: [MemberPayload] = [],
         membership: MemberPayload? = nil,
         messages: [MessagePayload] = [],
+        pendingMessages: [MessagePayload] = [],
         pinnedMessages: [MessagePayload] = [],
         channelReads: [ChannelReadPayload] = [],
         isHidden: Bool? = nil
@@ -25,6 +26,7 @@ extension ChannelPayload {
             members: members,
             membership: membership,
             messages: messages,
+            pendingMessages: pendingMessages,
             pinnedMessages: pinnedMessages,
             channelReads: channelReads,
             isHidden: isHidden

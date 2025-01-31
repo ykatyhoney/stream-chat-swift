@@ -1,8 +1,9 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
+import StreamChatTestTools
 import XCTest
 
 final class AsyncOperation_Tests: XCTestCase {
@@ -16,7 +17,7 @@ final class AsyncOperation_Tests: XCTestCase {
 
         operation.start()
 
-        waitForExpectations(timeout: 0.5) { error in
+        waitForExpectations(timeout: defaultTimeout) { error in
             if error != nil {
                 XCTFail(error.debugDescription)
             }
@@ -176,11 +177,6 @@ final class AsyncOperation_Tests: XCTestCase {
             operationBlockCalls = $0
         }
 
-        guard #available(iOS 13.0, *) else {
-            XCTFail("KVO Expectations require iOS 13.0+")
-            return
-        }
-
         operation.start()
         let operationCompletion = expectation(description: "operation concludes")
         let token = operation.observe(\.isExecuting) { _, change in
@@ -191,7 +187,7 @@ final class AsyncOperation_Tests: XCTestCase {
         }
 
         operation.cancel()
-        wait(for: [operationCompletion], timeout: 0.1)
+        wait(for: [operationCompletion], timeout: defaultTimeout)
 
         // We want to make sure that upon an early cancellation, it does not continue executing
         XCTAssertEqual(operationBlockCalls, 1)
@@ -204,11 +200,6 @@ final class AsyncOperation_Tests: XCTestCase {
             operationBlockCalls = $0
         }
 
-        guard #available(iOS 13.0, *) else {
-            XCTFail("KVO Expectations require iOS 13.0+")
-            return
-        }
-
         operation.start()
         let operationCompletion = expectation(description: "operation concludes")
         let token = operation.observe(\.isExecuting) { _, change in
@@ -219,7 +210,7 @@ final class AsyncOperation_Tests: XCTestCase {
         }
 
         operation.isFinished = true
-        wait(for: [operationCompletion], timeout: 0.1)
+        wait(for: [operationCompletion], timeout: defaultTimeout)
 
         // We want to make sure that upon an early set of isFinished to true, it does not continue executing
         XCTAssertEqual(operationBlockCalls, 1)
@@ -250,15 +241,9 @@ extension AsyncOperation_Tests {
     }
 
     private func waitForOperationToFinish(_ operation: AsyncOperation) {
-        guard #available(iOS 13.0, *) else {
-            XCTFail()
-            return
-        }
-
         _waitForOperationToFinish(operation)
     }
 
-    @available(iOS 13.0, *)
     private func _waitForOperationToFinish(_ operation: AsyncOperation) {
         let expectation = expectation(description: "operation concludes")
         let token = operation.observe(\.isFinished) { _, change in

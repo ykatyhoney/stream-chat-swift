@@ -1,14 +1,14 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
 @testable import StreamChatTestTools
 @testable import StreamChatUI
+import StreamSwiftTestHelpers
 import SwiftUI
 import XCTest
 
-@available(iOS 13.0, *)
 final class ChatChannelView_Tests: iOS13TestCase {
     var chatChannel: SwiftUIViewControllerRepresentable<ChatChannelVC>!
     fileprivate var mockComposer: ComposerVC_Mock!
@@ -18,7 +18,7 @@ final class ChatChannelView_Tests: iOS13TestCase {
         super.setUp()
         Components.default.messageComposerVC = ComposerVC_Mock.self
         mockedChannelController = ChatChannelController_Mock.mock()
-        
+
         chatChannel = ChatChannelVC.asView(mockedChannelController)
     }
 

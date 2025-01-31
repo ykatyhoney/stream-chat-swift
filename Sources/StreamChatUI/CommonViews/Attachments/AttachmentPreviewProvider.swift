@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -8,7 +8,7 @@ import UIKit
 public protocol AttachmentPreviewProvider {
     /// The view representing the attachment.
     func previewView(components: Components) -> UIView
-    
+
     /// The preferred axis to be used for attachment previews in attachments view.
     static var preferredAxis: NSLayoutConstraint.Axis { get }
 }
@@ -46,6 +46,22 @@ extension VideoAttachmentPayload: AttachmentPreviewProvider {
     public func previewView(components: Components) -> UIView {
         let preview = components.videoAttachmentComposerPreview.init()
         preview.content = videoURL
+        return preview
+    }
+}
+
+extension VoiceRecordingAttachmentPayload: AttachmentPreviewProvider {
+    public static var preferredAxis: NSLayoutConstraint.Axis { .vertical }
+
+    /// The view representing the voiceRecording attachment.
+    public func previewView(components: Components) -> UIView {
+        let preview = components.voiceRecordingAttachmentComposerPreview.init()
+        preview.content = .init(
+            title: title ?? "",
+            size: file.size,
+            duration: duration ?? 0,
+            audioAssetURL: voiceRecordingURL
+        )
         return preview
     }
 }

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
@@ -18,13 +18,14 @@ extension ChatClient {
 
 /// `ChatChannelMemberListController` is a controller class which allows observing
 /// a list of chat users based on the provided query.
+/// - Note: For an async-await alternative of the `ChatChannelMemberListControler`, please check ``MemberList`` in the async-await supported [state layer](https://getstream.io/chat/docs/sdk/ios/client/state-layer/state-layer-overview/).
 public class ChatChannelMemberListController: DataController, DelegateCallable, DataStoreProvider {
     /// The query specifying sorting and filtering for the list of channel members.
     @Atomic public private(set) var query: ChannelMemberListQuery
-    
+
     /// The `ChatClient` instance this controller belongs to.
     public let client: ChatClient
-    
+
     /// The channel members matching the query.
     /// To observe the member list changes, set your class as a delegate of this controller or use the provided
     /// `Combine` publishers.
@@ -32,28 +33,27 @@ public class ChatChannelMemberListController: DataController, DelegateCallable, 
         startObservingIfNeeded()
         return memberListObserver.items
     }
-    
+
     /// The worker used to fetch the remote data and communicate with servers.
     private lazy var memberListUpdater = createMemberListUpdater()
 
     /// The observer used to observe the changes in the database.
     private lazy var memberListObserver = createMemberListObserver()
-    
+
     /// The type-erased delegate.
     var multicastDelegate: MulticastDelegate<ChatChannelMemberListControllerDelegate> = .init() {
         didSet {
             stateMulticastDelegate.set(mainDelegate: multicastDelegate.mainDelegate)
             stateMulticastDelegate.set(additionalDelegates: multicastDelegate.additionalDelegates)
-            
+
             startObservingIfNeeded()
         }
     }
-    
+
     var _basePublishers: Any?
     /// An internal backing object for all publicly available Combine publishers. We use it to simplify the way we expose
     /// publishers. Instead of creating custom `Publisher` types, we use `CurrentValueSubject` and `PassthroughSubject` internally,
     /// and expose the published values by mapping them to a read-only `AnyPublisher` type.
-    @available(iOS 13, *)
     var basePublishers: BasePublishers {
         if let value = _basePublishers as? BasePublishers {
             return value
@@ -61,9 +61,9 @@ public class ChatChannelMemberListController: DataController, DelegateCallable, 
         _basePublishers = BasePublishers(controller: self)
         return _basePublishers as? BasePublishers ?? .init(controller: self)
     }
-    
+
     private let environment: Environment
-    
+
     /// Creates a new `ChatChannelMemberListController`
     /// - Parameters:
     ///   - query: The query used for filtering and sorting the channel members.
@@ -74,37 +74,35 @@ public class ChatChannelMemberListController: DataController, DelegateCallable, 
         self.query = query
         self.environment = environment
     }
-    
+
     override public func synchronize(_ completion: ((_ error: Error?) -> Void)? = nil) {
         startObservingIfNeeded()
-        
+
         if case let .localDataFetchFailed(error) = state {
             callback { completion?(error) }
             return
         }
-        
-        memberListUpdater.load(query) { error in
-            self.state = error == nil ? .remoteDataFetched : .remoteDataFetchFailed(ClientError(with: error))
-            self.callback { completion?(error) }
+
+        memberListUpdater.load(query) { result in
+            self.state = result.error == nil ? .remoteDataFetched : .remoteDataFetchFailed(ClientError(with: result.error))
+            self.callback { completion?(result.error) }
         }
     }
-    
+
     private func createMemberListUpdater() -> ChannelMemberListUpdater {
         environment.memberListUpdaterBuilder(
             client.databaseContainer,
             client.apiClient
         )
     }
-    
-    private func createMemberListObserver() -> ListDatabaseObserver<ChatChannelMember, MemberDTO> {
+
+    private func createMemberListObserver() -> BackgroundListDatabaseObserver<ChatChannelMember, MemberDTO> {
         let observer = environment.memberListObserverBuilder(
-            client.databaseContainer.viewContext,
+            client.databaseContainer,
             MemberDTO.members(matching: query),
-            { try $0.asModel() },
-            NSFetchedResultsController<MemberDTO>.self
+            { try $0.asModel() }
         )
-        
-        observer.onChange = { [weak self] changes in
+        observer.onDidChange = { [weak self] changes in
             self?.delegateCallback { [weak self] in
                 guard let self = self else {
                     log.warning("Callback called while self is nil")
@@ -114,13 +112,13 @@ public class ChatChannelMemberListController: DataController, DelegateCallable, 
                 $0.memberListController(self, didChangeMembers: changes)
             }
         }
-        
+
         return observer
     }
-    
+
     private func startObservingIfNeeded() {
         guard state == .initialized else { return }
-        
+
         do {
             try memberListObserver.startObserving()
             state = .localDataFetched
@@ -145,10 +143,10 @@ public extension ChatChannelMemberListController {
     ) {
         var updatedQuery = query
         updatedQuery.pagination = Pagination(pageSize: limit, offset: members.count)
-        memberListUpdater.load(updatedQuery) { error in
+        memberListUpdater.load(updatedQuery) { result in
             self.query = updatedQuery
             self.callback {
-                completion?(error)
+                completion?(result.error)
             }
         }
     }
@@ -162,11 +160,17 @@ extension ChatChannelMemberListController {
         ) -> ChannelMemberListUpdater = ChannelMemberListUpdater.init
 
         var memberListObserverBuilder: (
-            _ context: NSManagedObjectContext,
+            _ database: DatabaseContainer,
             _ fetchRequest: NSFetchRequest<MemberDTO>,
-            _ itemCreator: @escaping (MemberDTO) throws -> ChatChannelMember,
-            _ controllerType: NSFetchedResultsController<MemberDTO>.Type
-        ) -> ListDatabaseObserver<ChatChannelMember, MemberDTO> = ListDatabaseObserver.init
+            _ itemCreator: @escaping (MemberDTO) throws -> ChatChannelMember
+        ) -> BackgroundListDatabaseObserver<ChatChannelMember, MemberDTO> = {
+            BackgroundListDatabaseObserver(
+                database: $0,
+                fetchRequest: $1,
+                itemCreator: $2,
+                itemReuseKeyPaths: (\ChatChannelMember.id, \MemberDTO.id)
+            )
+        }
     }
 }
 

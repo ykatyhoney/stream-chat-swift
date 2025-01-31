@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -17,7 +17,7 @@ open class ChatMessageAttachmentPreviewVC: _ViewController, WKNavigationDelegate
         .withoutAutoresizingMaskConstraints
         .withAccessibilityIdentifier(identifier: "webView")
 
-    public private(set) lazy var activityIndicatorView = UIActivityIndicatorView(style: .gray)
+    public private(set) lazy var activityIndicatorView = UIActivityIndicatorView(style: .medium)
         .withAccessibilityIdentifier(identifier: "activityIndicatorView")
 
     private lazy var closeButton = UIBarButtonItem(

@@ -2,8 +2,7 @@
 //  UploadedAttachment.swift
 //  StreamChat
 //
-//  Created by Nuno Vieira on 09/11/2022.
-//  Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -12,11 +11,13 @@ import Foundation
 extension UploadedAttachment {
     static func dummy(
         attachment: AnyChatMessageAttachment = .dummy(),
-        remoteURL: URL = .unique()
+        remoteURL: URL = .unique(),
+        thumbnailURL: URL = .unique()
     ) -> UploadedAttachment {
         UploadedAttachment(
             attachment: attachment,
-            remoteURL: remoteURL
+            remoteURL: remoteURL,
+            thumbnailURL: thumbnailURL
         )
     }
 }

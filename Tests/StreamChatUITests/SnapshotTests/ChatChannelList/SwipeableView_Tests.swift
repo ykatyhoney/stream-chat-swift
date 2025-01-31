@@ -1,10 +1,11 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
-import StreamChatTestTools
+@testable import StreamChatTestTools
 @testable import StreamChatUI
+import StreamSwiftTestHelpers
 import XCTest
 
 final class SwipeableView_Tests: XCTestCase {
@@ -17,13 +18,13 @@ final class SwipeableView_Tests: XCTestCase {
         view.actionItemsStackView.addArrangedSubview(deleteView)
         view.actionItemsStackView.addArrangedSubview(moreView)
         view.addSizeConstraints()
-        
+
         // Simulate view moving to superview to have view initialized.
         view.executeLifecycleMethods()
-        
+
         // Buttons are revealed after swipe gesture so we need to simulate it to check the buttons.
         view.swipeOpen()
-        
+
         AssertSnapshot(view, variants: .onlyUserInterfaceStyles)
     }
 
@@ -55,7 +56,7 @@ private extension SwipeableView {
     func swipeOpen() {
         actionStackViewWidthConstraint?.constant = 100
     }
-    
+
     func addSizeConstraints() {
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: 50),

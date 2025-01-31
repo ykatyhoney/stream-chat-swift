@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Combine
@@ -13,7 +13,6 @@ public protocol SwiftUIRepresentable: AnyObject {
     var content: ViewContent { get set }
 }
 
-@available(iOS 13.0, *)
 public extension SwiftUIRepresentable where Self: UIView {
     /// Creates `SwiftUIViewRepresentable` instance wrapping the current type that can be used in your SwiftUI view
     /// - Parameters:
@@ -26,7 +25,6 @@ public extension SwiftUIRepresentable where Self: UIView {
     }
 }
 
-@available(iOS 13.0, *)
 public extension SwiftUIRepresentable where Self: UIViewController {
     /// Creates `SwiftUIViewControllerRepresentable` instance wrapping the current type that can be used in your SwiftUI view
     /// - Parameters:
@@ -39,12 +37,11 @@ public extension SwiftUIRepresentable where Self: UIViewController {
     }
 }
 
-@available(iOS 13.0, *)
 /// A concrete type that wraps a view conforming to `SwiftUIRepresentable` and enables using it in SwiftUI via `UIViewRepresentable`
 public struct SwiftUIViewRepresentable<View: UIView & SwiftUIRepresentable>: UIViewRepresentable {
     private let view: View.Type
     private let content: View.ViewContent
-    
+
     init(
         view: View.Type,
         content: View.ViewContent
@@ -52,17 +49,16 @@ public struct SwiftUIViewRepresentable<View: UIView & SwiftUIRepresentable>: UIV
         self.view = view
         self.content = content
     }
-    
+
     public func makeUIView(context: Context) -> View {
         view.init()
     }
-    
+
     public func updateUIView(_ uiView: View, context: Context) {
         uiView.content = content
     }
 }
 
-@available(iOS 13.0, *)
 /// A concrete type that wraps a view conforming to `SwiftUIRepresentable` and enables using it in SwiftUI via `UIViewControllerRepresentable`
 public struct SwiftUIViewControllerRepresentable<
     ViewController: UIViewController &
@@ -70,7 +66,7 @@ public struct SwiftUIViewControllerRepresentable<
 >: UIViewControllerRepresentable {
     private let viewController: ViewController.Type
     private let content: ViewController.ViewContent
-    
+
     init(
         viewController: ViewController.Type,
         content: ViewController.ViewContent
@@ -78,12 +74,12 @@ public struct SwiftUIViewControllerRepresentable<
         self.viewController = viewController
         self.content = content
     }
-    
+
     public func makeUIViewController(context: Context) -> ViewController {
         let controller = ViewController()
         controller.content = content
         return controller
     }
-    
+
     public func updateUIViewController(_ uiViewController: ViewController, context: Context) {}
 }

@@ -1,12 +1,12 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
 import Foundation
 
 final class CDNClient_Spy: CDNClient, Spy {
-    var recordedFunctions: [String] = []
+    let spyState = SpyState()
 
     static var maxAttachmentSize: Int64 { .max }
     var uploadAttachmentProgress: Double?

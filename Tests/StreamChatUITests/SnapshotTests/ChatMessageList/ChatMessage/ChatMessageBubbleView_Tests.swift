@@ -1,10 +1,11 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
-import StreamChatTestTools
+@testable import StreamChatTestTools
 @testable import StreamChatUI
+import StreamSwiftTestHelpers
 import XCTest
 
 final class ChatMessageBubbleView_Tests: XCTestCase {
@@ -12,30 +13,30 @@ final class ChatMessageBubbleView_Tests: XCTestCase {
         backgroundColor: Appearance.default.colorPalette.background2,
         roundedCorners: CACornerMask.all.subtracting(.layerMaxXMinYCorner)
     )
-    
+
     // MARK: - Appearance
 
     func test_appearance_whenNoContentSet() {
         // Create a bubble
         let bubble = ChatMessageBubbleView().withFixedSize
-        
+
         // Set bubble content
         bubble.content = nil
-        
+
         // Assert the bubble is rendered correctly
         AssertSnapshot(bubble, variants: .onlyUserInterfaceStyles)
     }
-    
+
     func test_appearance_whenContentIsSet() {
         // Create a bubble
         let bubble = ChatMessageBubbleView().withFixedSize
-        
+
         // Set bubble content
         bubble.content = bubbleContent
-        
+
         // Assert the bubble is rendered correctly
         AssertSnapshot(bubble, variants: .onlyUserInterfaceStyles)
-        
+
         // Assert bubble has correct values set
         XCTAssertEqual(bubble.layer.maskedCorners, bubble.content?.roundedCorners)
         XCTAssertEqual(bubble.backgroundColor, bubble.content?.backgroundColor)
@@ -59,7 +60,7 @@ final class ChatMessageBubbleView_Tests: XCTestCase {
         class TestBubble: ChatMessageBubbleView {
             override func setUpAppearance() {
                 super.setUpAppearance()
-                
+
                 layer.cornerRadius = 8
                 layer.borderWidth = 4
             }
@@ -67,7 +68,7 @@ final class ChatMessageBubbleView_Tests: XCTestCase {
 
         // Create a custom bubble
         let bubble = TestBubble().withFixedSize
-        
+
         // Set bubble content
         bubble.content = bubbleContent
 

@@ -1,11 +1,10 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Combine
 import Foundation
 
-@available(iOS 13, *)
 extension ChatConnectionController {
     /// A publisher emitting a new value every time the connection status changes.
     public var connectionStatusPublisher: AnyPublisher<ConnectionStatus, Never> {
@@ -18,20 +17,19 @@ extension ChatConnectionController {
     class BasePublishers {
         /// The wrapper controller
         unowned let controller: ChatConnectionController
-        
+
         /// A backing subject for `connectionStatusPublisher`.
         let connectionStatus: CurrentValueSubject<ConnectionStatus, Never>
-                
+
         init(controller: ChatConnectionController) {
             self.controller = controller
             connectionStatus = .init(controller.connectionStatus)
-            
+
             controller.multicastDelegate.add(additionalDelegate: self)
         }
     }
 }
 
-@available(iOS 13, *)
 extension ChatConnectionController.BasePublishers: ChatConnectionControllerDelegate {
     func connectionController(
         _ controller: ChatConnectionController,

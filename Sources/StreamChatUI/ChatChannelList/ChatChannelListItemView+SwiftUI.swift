@@ -1,18 +1,16 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Combine
 import StreamChat
 import SwiftUI
 
-@available(iOS 13.0, *)
 /// Protocol of `ChatChannelListItemView` wrapper for use in SwiftUI.
 public protocol ChatChannelListItemViewSwiftUIView: View {
     init(dataSource: ChatChannelListItemView.ObservedObject<Self>)
 }
 
-@available(iOS 13.0, *)
 extension ChatChannelListItemView {
     /// Data source of `ChatChannelListItemView` represented as `ObservedObject`.
     public typealias ObservedObject<Content: SwiftUIView> = SwiftUIWrapper<Content>

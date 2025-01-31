@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -23,13 +23,17 @@ class NotificationService: UNNotificationServiceExtension {
             guard let downloadedUrl = downloadedUrl else {
                 return
             }
-          
+
             guard let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first else {
                 return
             }
-          
-            let localURL = URL(fileURLWithPath: path).appendingPathComponent(url.lastPathComponent)
-          
+
+            // UNNotificationAttachment requires path extension to be set (fallback to jpeg if not set)
+            var localURL = URL(fileURLWithPath: path).appendingPathComponent(UUID().uuidString + url.lastPathComponent)
+            if localURL.pathExtension.isEmpty {
+                localURL.appendPathExtension("jpeg")
+            }
+
             do {
                 try FileManager.default.moveItem(at: downloadedUrl, to: localURL)
             } catch {
@@ -105,14 +109,14 @@ class NotificationService: UNNotificationServiceExtension {
                 contentHandler(content)
             }
         }
-        
+
         if !chatNotification {
             // this was not a notification from Stream Chat
             // perform any other transformation to the notification if needed
             contentHandler(content)
         }
     }
-    
+
     override func serviceExtensionTimeWillExpire() {
         // Called just before the extension will be terminated by the system.
         // Use this as an opportunity to deliver your "best attempt" at modified content, otherwise the original push payload will be used.

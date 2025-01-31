@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -10,7 +10,7 @@ protocol RequestEncoder {
     ///
     /// Trying to encode an `Endpoint` with the `requiresConnectionId` set to `true` without setting the delegate
     var connectionDetailsProviderDelegate: ConnectionDetailsProviderDelegate? { get set }
-    
+
     /// Asynchronously creates a new `URLRequest` with the data from the `Endpoint`. It also adds all required data
     /// like an api key, etc.
     ///
@@ -21,7 +21,7 @@ protocol RequestEncoder {
         for endpoint: Endpoint<ResponsePayload>,
         completion: @escaping (Result<URLRequest, Error>) -> Void
     )
-    
+
     /// Creates a new `RequestEncoder`.
     ///
     /// - Parameters:
@@ -44,22 +44,33 @@ extension RequestEncoder {
             "Use the asynchronous version of `encodeRequest` for endpoints with `requiresConnectionId` set to `true.`",
             subsystems: .httpRequests
         )
-        
-        var result: Result<URLRequest, Error>?
-        encodeRequest(for: endpoint) { result = $0 }
-        
-        log.assert(
-            result != nil,
-            "`encodeRequest` with `requiresConnectionId == false` should return immediately.",
-            subsystems: .httpRequests
+
+        var result: Result<URLRequest, Error> = .failure(
+            ClientError("Unexpected error. The result was not changed after encoding the request.")
         )
-        
-        return try result!.get()
+
+        let dispatchGroup = DispatchGroup()
+        dispatchGroup.enter()
+        encodeRequest(for: endpoint) {
+            result = $0
+            dispatchGroup.leave()
+        }
+
+        let waitResult = dispatchGroup.wait(timeout: .now() + returningResultTimeout)
+        if waitResult == .timedOut {
+            result = .failure(ClientError("Encoding request timed out. Endpoint: \(endpoint)"))
+        }
+
+        return try result.get()
+    }
+
+    private var returningResultTimeout: TimeInterval {
+        5
     }
 }
 
 /// The default implementation of `RequestEncoder`.
-struct DefaultRequestEncoder: RequestEncoder {
+class DefaultRequestEncoder: RequestEncoder {
     let baseURL: URL
     let apiKey: APIKey
 
@@ -73,27 +84,27 @@ struct DefaultRequestEncoder: RequestEncoder {
     /// otherwise we have a connection problem, which is handled as described above.
     private let waiterTimeout: TimeInterval = 10
     weak var connectionDetailsProviderDelegate: ConnectionDetailsProviderDelegate?
-    
+
     func encodeRequest<ResponsePayload: Decodable>(
         for endpoint: Endpoint<ResponsePayload>,
         completion: @escaping (Result<URLRequest, Error>) -> Void
     ) {
         var request: URLRequest
-        
+
         do {
             // Prepare the URL
             var url = try encodeRequestURL(for: endpoint)
             url = try url.appendingQueryItems(["api_key": apiKey.apiKeyString])
-            
+
             // Create a request
             request = URLRequest(url: url)
             request.httpMethod = endpoint.method.rawValue
-            
+
             // Encode endpoint-specific query items
             if let queryItems = endpoint.queryItems {
                 try encodeJSONToQueryItems(request: &request, data: queryItems)
             }
-            
+
             try encodeRequestBody(request: &request, endpoint: endpoint)
         } catch {
             completion(.failure(error))
@@ -114,11 +125,11 @@ struct DefaultRequestEncoder: RequestEncoder {
         }
     }
 
-    init(baseURL: URL, apiKey: APIKey) {
+    required init(baseURL: URL, apiKey: APIKey) {
         self.baseURL = baseURL
         self.apiKey = apiKey
     }
-    
+
     // MARK: - Private
 
     private func addAuthorizationHeader<T: Decodable>(
@@ -151,10 +162,10 @@ struct DefaultRequestEncoder: RequestEncoder {
                     updatedRequest.setHTTPHeaders(.jwtStreamAuth, .authorization(token.rawValue))
                 }
                 completion(.success(updatedRequest))
-            case .failure(_ as ClientError.WaiterTimeout):
-                // We complete with a success to account for the most probable case for the timeout: No connection.
-                // That way, when reaching the APIClient, we would properly report a connection error.
-                completion(.success(request))
+            case let .failure(error as ClientError.WaiterTimeout):
+                // The receiver will treat a waiter timeout differently than the other ones, and that's why we are not
+                // masking it under missing token. The receiver should retry based on their own logic
+                completion(.failure(error))
             case .failure:
                 completion(.failure(missingTokenError))
             }
@@ -188,10 +199,10 @@ struct DefaultRequestEncoder: RequestEncoder {
                     var updatedRequest = request
                     updatedRequest.url = try updatedRequest.url?.appendingQueryItems(["connection_id": connectionId])
                     completion(.success(updatedRequest))
-                case .failure(_ as ClientError.WaiterTimeout):
-                    // We complete with a success to account for the most probable case for the timeout: No connection.
-                    // That way, when reaching the APIClient, we would properly report a connection error.
-                    completion(.success(request))
+                case let .failure(error as ClientError.WaiterTimeout):
+                    // The receiver will treat a waiter timeout differently than the other ones, and that's why we are not
+                    // masking it under missing token. The receiver should retry based on their own logic
+                    throw error
                 case .failure:
                     throw missingConnectionIdError
                 }
@@ -200,28 +211,28 @@ struct DefaultRequestEncoder: RequestEncoder {
             }
         }
     }
-    
+
     private func encodeRequestURL<T: Decodable>(for endpoint: Endpoint<T>) throws -> URL {
         var urlComponents = URLComponents()
         urlComponents.scheme = baseURL.scheme
         urlComponents.host = baseURL.host
         urlComponents.path = baseURL.path
         urlComponents.port = baseURL.port
-        
+
         guard var url = urlComponents.url else {
             throw ClientError.InvalidURL("URL can't be created using components: \(urlComponents)")
         }
-        
+
         url = url.appendingPathComponent(endpoint.path.value)
         return url
     }
-    
+
     private func encodeRequestBody<T: Decodable>(request: inout URLRequest, endpoint: Endpoint<T>) throws {
         switch endpoint.method {
         case .get, .delete:
             guard let body = endpoint.body else { return }
             try encodeJSONToQueryItems(request: &request, data: body)
-        case .post, .patch:
+        case .post, .patch, .put:
             if let data = endpoint.body as? Data {
                 request.httpBody = data
             } else {
@@ -230,13 +241,13 @@ struct DefaultRequestEncoder: RequestEncoder {
             }
         }
     }
-    
+
     private func encodeJSONToQueryItems(request: inout URLRequest, data: Encodable) throws {
         let data = try (data as? Data) ?? JSONEncoder.stream.encode(AnyEncodable(data))
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw ClientError.InvalidJSON("Data is not a valid JSON: \(String(data: data, encoding: .utf8) ?? "nil")")
         }
-        
+
         let bodyQueryItems = json.compactMap { (key, value) -> URLQueryItem? in
             // If the `value` is a JSON, encode it like that
             if let jsonValue = value as? [String: Any] {
@@ -250,29 +261,35 @@ struct DefaultRequestEncoder: RequestEncoder {
                     )
                 }
             }
-            
+
             return URLQueryItem(name: key, value: String(describing: value))
         }
-        
+
         log.assert(request.url != nil, "Request URL must not be `nil`.", subsystems: .httpRequests)
-        
+
         request.url = try request.url!.appendingQueryItems(bodyQueryItems)
     }
 }
 
 private extension URL {
+    func appendingQueryItems(_ items: [String: String]) throws -> URL {
+        let queryItems = items.map { URLQueryItem(name: $0.key, value: $0.value) }
+        return try appendingQueryItems(queryItems)
+    }
+
     func appendingQueryItems(_ items: [URLQueryItem]) throws -> URL {
         guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
             throw ClientError.InvalidURL("Can't create `URLComponents` from the url: \(self).")
         }
         let existingQueryItems = components.queryItems ?? []
         components.queryItems = existingQueryItems + items
-        
-        // Manually replace all occurrences of "+" in the query because it can be understood as a placeholder
-        // value for a space. We want to keep it as "+" so we have to manually percent-encode it.
+
+        // Manually replace all occurrences of "+" and ";" in the query because it can be understood as a placeholder
+        // value for a space. We want to keep it as "+" and ";" so we have to manually percent-encode it.
         components.percentEncodedQuery = components.percentEncodedQuery?
             .replacingOccurrences(of: "+", with: "%2B")
-        
+            .replacingOccurrences(of: ";", with: "%3B")
+
         guard let newURL = components.url else {
             throw ClientError.InvalidURL("Can't create a new `URL` after appending query items: \(items).")
         }
@@ -284,22 +301,10 @@ typealias WaiterToken = String
 protocol ConnectionDetailsProviderDelegate: AnyObject {
     func provideConnectionId(timeout: TimeInterval, completion: @escaping (Result<ConnectionId, Error>) -> Void)
     func provideToken(timeout: TimeInterval, completion: @escaping (Result<Token, Error>) -> Void)
-    func invalidateTokenWaiter(_ waiter: WaiterToken)
-    func invalidateConnectionIdWaiter(_ waiter: WaiterToken)
 }
 
-extension ClientError {
-    class InvalidURL: ClientError {}
-    class InvalidJSON: ClientError {}
-    class MissingConnectionId: ClientError {}
-}
-
-/// A helper extension allowing to create `URLQueryItems` using a dictionary literal like:
-/// ```
-/// let queryItems = ["item1": "Luke", "item2": nil, "item3": "Leia"]
-/// ```
-extension Array: ExpressibleByDictionaryLiteral where Element == URLQueryItem {
-    public init(dictionaryLiteral elements: (String, String?)...) {
-        self = elements.map(URLQueryItem.init)
-    }
+public extension ClientError {
+    final class InvalidURL: ClientError {}
+    final class InvalidJSON: ClientError {}
+    final class MissingConnectionId: ClientError {}
 }

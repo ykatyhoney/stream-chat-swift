@@ -1,11 +1,9 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
 import Foundation
-import Swifter
-import StreamChatTestHelpers
 
 public extension StreamMockServer {
 
@@ -31,13 +29,13 @@ public extension StreamMockServer {
         json[eventKey.channelType.rawValue] = ChannelType.messaging.rawValue
         json[eventKey.parentId.rawValue] = parentMessageId
         json[eventKey.cid.rawValue] = "\(ChannelType.messaging.rawValue):\(channelId)"
-        
+
         if let channel = channel { json[JSONKey.channel] = channel }
-        
+
         writeText(json.jsonToString())
         return self
     }
-    
+
     /// Manages the lifecycle of the messages over a websocket connection
     ///
     /// - Parameters:
@@ -50,7 +48,7 @@ public extension StreamMockServer {
     @discardableResult
     func websocketMessage(
         _ text: String? = "",
-        channelId: String?,
+        channelId: String? = nil,
         messageId: String?,
         parentId: String? = nil,
         timestamp: String? = TestData.currentDate,
@@ -58,15 +56,16 @@ public extension StreamMockServer {
         eventType: EventType,
         user: [String: Any]?,
         channel: [String: Any]? = nil,
+        channelReply: Bool = false,
         hardDelete: Bool = false,
         intercept: ((inout [String: Any]?) -> [String: Any]?)? = nil
     ) -> Self {
         guard let messageId = messageId else { return self }
-        
+
         let mockFile = messageType == .ephemeral ? MockFile.ephemeralMessage : MockFile.message
         var json = TestData.getMockResponse(fromFile: mockFile).json
         var mockedMessage: [String: Any]?
-        
+
         switch eventType {
         case .messageNew:
             mockedMessage = mockMessage(
@@ -84,17 +83,19 @@ public extension StreamMockServer {
                 var attachments = mockedMessage?[messageKey.attachments.rawValue] as? [[String: Any]]
                 attachments?[0][GiphyAttachmentSpecificCodingKeys.actions.rawValue] = nil
                 mockedMessage?[messageKey.attachments.rawValue] = attachments
-                mockedMessage?[messageKey.type.rawValue] = MessageType.regular.rawValue
+                mockedMessage?[messageKey.type.rawValue] = parentId == nil || channelReply ? MessageType.regular.rawValue : MessageType.reply.rawValue
             }
-            saveMessage(mockedMessage)
+            parentId == nil ? saveMessage(mockedMessage) : saveReply(mockedMessage)
         case .messageDeleted:
             let message = findMessageById(messageId)
             mockedMessage = mockDeletedMessage(message, user: user)
             mockedMessage = intercept?(&mockedMessage) ?? mockedMessage
             if hardDelete {
                 removeMessage(id: messageId)
-            } else {
+            } else if isMessageInList(messageList, message: mockedMessage) {
                 saveMessage(mockedMessage)
+            } else {
+                saveReply(mockedMessage)
             }
         case .messageUpdated:
             let message = findMessageById(messageId)
@@ -108,7 +109,7 @@ public extension StreamMockServer {
                 updatedAt: timestamp
             )
             mockedMessage = intercept?(&mockedMessage) ?? mockedMessage
-            saveMessage(mockedMessage)
+            parentId == nil ? saveMessage(mockedMessage) : saveReply(mockedMessage)
         default:
             mockedMessage = [:]
         }
@@ -121,27 +122,27 @@ public extension StreamMockServer {
             parentMessage?[messageKey.replyCount.rawValue] = previousReplyCount + 1
             saveMessage(parentMessage)
         }
-        
+
         if let channelId = channelId {
             json[JSONKey.channelId] = channelId
             json[JSONKey.channelType] = ChannelType.messaging.rawValue
             json[JSONKey.cid] = "\(ChannelType.messaging.rawValue):\(channelId)"
         }
-        
+
         if let channel = channel { json[JSONKey.channel] = channel }
-        
+
         json[JSONKey.user] = user
         json[JSONKey.message] = mockedMessage
         json[messageKey.createdAt.rawValue] = TestData.currentDate
         json[messageKey.type.rawValue] = eventType.rawValue
         if hardDelete { json[eventKey.hardDelete.rawValue] = true }
-        
+
         writeText(json.jsonToString())
         if eventType == .messageNew { latestWebsocketMessage = text ?? "" }
-        
+
         return self
     }
-    
+
     /// Manages the lifecycle of the reactions over a websocket connection
     ///
     /// - Parameters:
@@ -163,7 +164,7 @@ public extension StreamMockServer {
         let cid = messageDetails?[messageKey.cid.rawValue] as? String
         let channelId = cid?.split(separator: ":").last
         let timestamp = TestData.currentDate
-        
+
         message = mockMessageWithReaction(
             messageDetails,
             fromUser: user,
@@ -171,7 +172,7 @@ public extension StreamMockServer {
             timestamp: timestamp,
             deleted: eventType == .reactionDeleted
         )
-        
+
         reaction = mockReaction(
             reaction,
             fromUser: user,
@@ -179,7 +180,7 @@ public extension StreamMockServer {
             reactionType: type?.rawValue,
             timestamp: timestamp
         )
-        
+
         json[JSONKey.channelId] = channelId
         json[JSONKey.cid] = cid
         json[JSONKey.message] = message
@@ -187,7 +188,7 @@ public extension StreamMockServer {
         json[reactionKey.user.rawValue] = user
         json[reactionKey.createdAt.rawValue] = TestData.currentDate
         json[reactionKey.type.rawValue] = eventType.rawValue
-        
+
         saveMessage(message)
         writeText(json.jsonToString())
         return self
@@ -217,7 +218,7 @@ public extension StreamMockServer {
 
         // updated config with current values
         updateConfig(in: &json, withId: channelId)
-        
+
         json[JSONKey.channelId] = channelId
         json[JSONKey.cid] = "\(ChannelType.messaging.rawValue):\(channelId)"
         json[JSONKey.channelType] = ChannelType.messaging.rawValue

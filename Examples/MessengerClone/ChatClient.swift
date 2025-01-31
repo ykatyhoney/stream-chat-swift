@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -12,21 +12,17 @@ extension ChatClient {
         // Register custom UI elements
         var appearance = Appearance()
         var components = Components()
-        
+
         components.channelVC = MessengerChatChannelViewController.self
         components.channelHeaderView = MessengerChatChannelHeaderView.self
 
         components.channelContentView = ChatChannelListItemView.SwiftUIWrapper<MessengerChatChannelListItem>.self
-                
+
         Appearance.default = appearance
         Components.default = components
-        
+
         let config = ChatClientConfig(apiKey: APIKey("q95x9hkbyd6p"))
         let client = ChatClient(config: config)
-        client.connectUser(
-            userInfo: .init(id: "user-1"),
-            token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiY2lsdmlhIn0.jHi2vjKoF02P9lOog0kDVhsIrGFjuWJqZelX5capR30"
-        )
         return client
     }()
 }

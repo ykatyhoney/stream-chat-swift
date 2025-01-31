@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -21,18 +21,61 @@ private struct ElementWrapper<T: Decodable>: Decodable {
 }
 
 extension KeyedDecodingContainer {
+    func decodeAsResult<T: Decodable>(_ type: T.Type, forKey key: KeyedDecodingContainer<K>.Key) -> Result<T, Error> {
+        let result: Result<T, Error>
+        do {
+            let value = try decode(T.self, forKey: key)
+            result = .success(value)
+        } catch {
+            result = .failure(error)
+        }
+        return result
+    }
+
+    func decodeAsResultIfPresent<T: Decodable>(_ type: T.Type, forKey key: KeyedDecodingContainer<K>.Key) -> Result<T, Error>? {
+        let result: Result<T, Error>?
+        do {
+            if let value = try decodeIfPresent(T.self, forKey: key) {
+                result = .success(value)
+            } else {
+                result = nil
+            }
+        } catch {
+            result = .failure(error)
+        }
+        return result
+    }
+}
+
+// MARK: - Helpers to decode arrays and not discard the full array when there are parsing issues.
+
+extension KeyedDecodingContainer {
     func decodeArrayIgnoringFailures<T: Decodable>(_ type: [T].Type, forKey key: KeyedDecodingContainer<K>.Key) throws -> [T] {
         let wrappers = try decode([ElementWrapper<T>].self, forKey: key)
         for wrapper in wrappers where wrapper.error != nil {
-            let rawJSONPrettyPrinted = (try? JSONEncoder.default.encode(wrapper.rawJSON))?.debugPrettyPrintedJSON
-                ?? String(describing: wrapper.rawJSON)
-            var errorDescription = String(describing: wrapper.error)
-            if let error = wrapper.error as? DecodingError {
-                errorDescription = error.prettyPrintedDescription
-            }
-            log.error("Failed to decode \(T.self) in array: \(rawJSONPrettyPrinted), error: \(errorDescription)")
+            logError(forWrapper: wrapper)
         }
         return wrappers.compactMap(\.value)
+    }
+
+    func decodeArrayIfPresentIgnoringFailures<T: Decodable>(_ type: [T].Type, forKey key: KeyedDecodingContainer<K>.Key) throws -> [T]? {
+        guard let wrappers = try decodeIfPresent([ElementWrapper<T>].self, forKey: key) else {
+            return nil
+        }
+        for wrapper in wrappers where wrapper.error != nil {
+            logError(forWrapper: wrapper)
+        }
+        return wrappers.compactMap(\.value)
+    }
+
+    private func logError<T: Decodable>(forWrapper wrapper: ElementWrapper<T>) {
+        let rawJSONPrettyPrinted = (try? JSONEncoder.default.encode(wrapper.rawJSON))?.debugPrettyPrintedJSON
+            ?? String(describing: wrapper.rawJSON)
+        var errorDescription = String(describing: wrapper.error)
+        if let error = wrapper.error as? DecodingError {
+            errorDescription = error.prettyPrintedDescription
+        }
+        log.error("Failed to decode \(T.self) in array: \(rawJSONPrettyPrinted), error: \(errorDescription)")
     }
 }
 

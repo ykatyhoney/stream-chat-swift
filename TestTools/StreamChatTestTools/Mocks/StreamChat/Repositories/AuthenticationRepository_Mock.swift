@@ -1,54 +1,127 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
-import StreamChatTestHelpers
 @testable import StreamChat
 
 class AuthenticationRepository_Mock: AuthenticationRepository, Spy {
-    var recordedFunctions: [String] = []
+    enum Signature {
+        static let connectTokenProvider = "connectUser(userInfo:tokenProvider:completion:)"
+        static let connectGuest = "connectGuestUser(userInfo:completion:)"
+        static let connectAnon = "connectAnonymousUser(completion:)"
+        static let refreshToken = "refreshToken(completion:)"
+        static let clearTokenProvider = "clearTokenProvider()"
+        static let logOut = "logOutUser()"
+        static let completeTokenWaiters = "completeTokenWaiters(token:)"
+        static let completeTokenCompletions = "completeTokenCompletions(error:)"
+        static let setToken = "setToken(token:completeTokenWaiters:)"
+        static let provideToken = "provideToken(timeout:completion:)"
+    }
+
+    let spyState = SpyState()
     var mockedToken: Token?
     var mockedCurrentUserId: UserId?
-    var refreshTokenError: Error?
+
+    var connectUserResult: Result<Void, Error>?
+    var connectGuestResult: Result<Void, Error>?
+    var connectAnonResult: Result<Void, Error>?
+    var refreshTokenResult: Result<Void, Error>?
+    var completeWaitersToken: Token?
 
     override var currentUserId: UserId? {
-        return mockedCurrentUserId ?? super.currentUserId
+        return mockedCurrentUserId
     }
 
     override var currentToken: Token? {
-        return mockedToken ?? super.currentToken
+        return mockedToken
     }
 
     override init(apiClient: APIClient,
                   databaseContainer: DatabaseContainer,
-                  clientUpdater: ChatClientUpdater,
+                  connectionRepository: ConnectionRepository,
                   tokenExpirationRetryStrategy: RetryStrategy = DefaultRetryStrategy(),
                   timerType: StreamChat.Timer.Type = DefaultTimer.self) {
         super.init(apiClient: apiClient,
                    databaseContainer: databaseContainer,
-                   clientUpdater: clientUpdater,
+                   connectionRepository: connectionRepository,
                    tokenExpirationRetryStrategy: tokenExpirationRetryStrategy,
                    timerType: timerType)
     }
 
+    override func fetchCurrentUser() {
+        record()
+        // Nothing to do here
+    }
+
     override func refreshToken(completion: @escaping (Error?) -> Void) {
         record()
-        completion(refreshTokenError)
+        if let result = refreshTokenResult {
+            completion(result.error)
+        }
     }
 
     override func connectUser(userInfo: UserInfo?, tokenProvider: @escaping TokenProvider, completion: @escaping (Error?) -> Void) {
         record()
-        super.connectUser(userInfo: userInfo, tokenProvider: tokenProvider, completion: completion)
+        if let result = connectUserResult {
+            completion(result.error)
+        }
     }
 
     override func connectGuestUser(userInfo: UserInfo, completion: @escaping (Error?) -> Void) {
         record()
-        super.connectGuestUser(userInfo: userInfo, completion: completion)
+        if let result = connectGuestResult {
+            completion(result.error)
+        }
     }
 
-    override func setToken(token: Token) {
+    override func connectAnonymousUser(completion: @escaping (Error?) -> Void) {
         record()
-        super.setToken(token: token)
+        if let result = connectAnonResult {
+            completion(result.error)
+        }
+    }
+
+    override func setToken(token: Token, completeTokenWaiters: Bool) {
+        record()
+        setMockToken(token)
+    }
+
+    override func clearTokenProvider() {
+        record()
+    }
+
+    override func logOutUser() {
+        record()
+    }
+
+    var resetCallCount: Int = 0
+    override func reset() {
+        resetCallCount += 1
+    }
+
+    override func completeTokenWaiters(token: Token?) {
+        record()
+        completeWaitersToken = token
+    }
+
+    override func completeTokenCompletions(error: (any Error)?) {
+        record()
+    }
+
+    override func provideToken(timeout: TimeInterval = 10, completion: @escaping (Result<Token, Error>) -> Void) {
+        record()
+    }
+}
+
+extension AuthenticationRepository {
+    func setMockToken(_ token: Token = Token.unique()) {
+        guard let mock = self as? AuthenticationRepository_Mock else {
+            assertionFailure()
+            return
+        }
+
+        mock.mockedToken = token
+        mock.mockedCurrentUserId = token.userId
     }
 }

@@ -12,9 +12,12 @@ excluded:
   - UISDKdocumentation
   - Tests
   - TestTools
-  - Carthage
   - Pods
   - .build
+  - spm_cache
+  - vendor/bundle
+  - .ruby-lsp
+  - derived_data
 
 disabled_rules:
   - large_tuple
@@ -28,40 +31,49 @@ disabled_rules:
   - type_body_length
   - opening_brace
   - line_length
-  - constraints_forbidden
+  - switch_case_alignment
+  - notification_center_detachment
+
+  # TODO: https://github.com/GetStream/ios-issues-tracking/issues/538
+  - attributes # it should be included in `opt_in_rules`
+  - orphaned_doc_comment
+  - void_function_in_ternary
+  - unneeded_synthesized_initializer
+  - ns_number_init_as_function_reference
+  - for_where
 
 opt_in_rules:
   - convenience_type
   - empty_string
   - fatal_error_message
   - first_where
-  - modifier_order
   - toggle_bool
   - identical_operands
   - joined_default_parameter
   - unavailable_function
-  - overridden_super_call
   - explicit_init
   - redundant_optional_initialization
   - syntactic_sugar
   - multiline_arguments
   - multiline_function_chains
-  - unused_import
-  - attributes
   - file_name_no_space
+
+analyzer_rules:
+  - unused_import
 
 multiline_arguments:
   only_enforce_after_first_closure_on_first_line: true
 
-attributes:
-  always_on_same_line: ["@IBAction", "@NSManaged", "@objc"]
-  always_on_line_above: ["@discardableResult"]
+# TODO: https://github.com/GetStream/ios-issues-tracking/issues/538
+# attributes:
+#   always_on_same_line: ["@IBAction", "@NSManaged", "@objc"]
+#   always_on_line_above: ["@discardableResult"]
 
 trailing_whitespace:
   ignores_empty_lines: true
 
 function_body_length:
-  warning: 120
+  warning: 150
   error: 200
 
 file_name_no_space:
@@ -70,7 +82,7 @@ file_name_no_space:
 identifier_name:
   excluded: [r, g, b, a, x, y, z, dx, dy, dz, i, j, k, id, op, or, me, at, to, in]
   allowed_symbols: ["_"]
-  validates_start_with_lowercase: false
+  validates_start_with_lowercase: "warning"
 
 cyclomatic_complexity:
   ignores_case_statements: true
@@ -78,14 +90,14 @@ cyclomatic_complexity:
   error: 30
 
 custom_rules:
-  constraints_forbidden:
-    included: ".*StreamChatUI" # Matches all StreamChatUI files
-    excluded: ".*(?:_Tests)" # Doesn't apply to tests
-    regex: "Anchor(.constraint)\\("
+  regular_constraints_forbidden:
+    included: "Sources/StreamChatUI"
+    regex: "(.constraint)\\("
     capture_group: 1
     match_kinds:
       - identifier
-    message: "Plain constraints methods are forbidden. Use `pin(...)` alternative"
+    message: "Regular constraint methods are forbidden. Use `.pin()` instead."
+
   coredata_date_forbidden:
     included: "Sources/StreamChat/Database/DTOs"
     regex: "@NSManaged(| \\S*)* var \\S*: (NS)?Date"

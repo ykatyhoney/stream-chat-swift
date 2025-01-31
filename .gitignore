@@ -1,6 +1,9 @@
 # OS X
 .DS_Store
 
+# Environment Variables
+.env
+
 # Xcode
 #
 # gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
@@ -51,12 +54,6 @@ playground.xcworkspace
 # https://guides.cocoapods.org/using/using-cocoapods.html#should-i-check-the-pods-directory-into-source-control
 Pods/
 
-# Carthage
-#
-# Add this line if you want to avoid checking in source code from Carthage dependencies.
-Carthage/
-!Sample/Carthage/
-
 # fastlane
 #
 # It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the
@@ -64,6 +61,8 @@ Carthage/
 # For more information about the recommended setup visit:
 # https://docs.fastlane.tools/best-practices/source-control/#source-control
 
+!fastlane/.env
+fastlane/fastlane.log
 fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots
@@ -71,18 +70,33 @@ fastlane/test_output
 fastlane/allurectl
 fastlane/xcresults
 fastlane/recordings
+fastlane/performance
+fastlane/sonar
+fastlane/mint
+**/metrics/
 StreamChatCore.framework.coverage.txt
 StreamChatCoreTests.xctest.coverage.txt
 vendor/bundle/
+.bundle/
 .swiftpm
-Example/Carthage/.env
-Example/Carthage/fastlane/report.xml
 Sample/Cocoapods/Podfile.lock
 docusaurus/.env
 reports/
 .scannerwork/
 push_payload.json
 sinatra_log.txt
+derived_data/
+spm_cache/
+.buildcache
+buildcache
+App Thinning Size Report.txt
+app-thinning.plist
+*.dmg
+
+# gcloud
+google-cloud-sdk
+gcloud.tar.gz
+gcloud-service-account-key.json
 
 # Ignore Products folder
 Products/
@@ -90,8 +104,6 @@ Products/
 # Ignore Dependencies folder
 Dependencies/
 
-# Environment Variables
-.env
-
-# Ignore internal scheme
-StreamChat.xcodeproj/xcshareddata/xcschemes/DemoApp-StreamDevelopers.xcscheme
+# VSCode
+.vscode
+buildServer.json

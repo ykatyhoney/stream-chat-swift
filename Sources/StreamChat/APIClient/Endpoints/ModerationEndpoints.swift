@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -10,9 +10,42 @@ extension Endpoint {
     static func muteUser(_ userId: UserId) -> Endpoint<EmptyResponse> {
         muteUser(true, with: userId)
     }
-    
+
     static func unmuteUser(_ userId: UserId) -> Endpoint<EmptyResponse> {
         muteUser(false, with: userId)
+    }
+}
+
+// MARK: - User blocking
+
+extension Endpoint {
+    static func blockUser(_ userId: UserId) -> Endpoint<BlockingUserPayload> {
+        .init(
+            path: .blockUser,
+            method: .post,
+            queryItems: nil,
+            requiresConnectionId: false,
+            body: ["blocked_user_id": userId]
+        )
+    }
+
+    static func unblockUser(_ userId: UserId) -> Endpoint<EmptyResponse> {
+        .init(
+            path: .unblockUser,
+            method: .post,
+            queryItems: nil,
+            requiresConnectionId: false,
+            body: ["blocked_user_id": userId]
+        )
+    }
+    
+    static func loadBlockedUsers() -> Endpoint<BlocksPayload> {
+        .init(
+            path: .blockUser,
+            method: .get,
+            queryItems: nil,
+            requiresConnectionId: false
+        )
     }
 }
 
@@ -22,8 +55,9 @@ extension Endpoint {
     static func banMember(
         _ userId: UserId,
         cid: ChannelId,
-        timeoutInMinutes: Int? = nil,
-        reason: String? = nil
+        shadow: Bool,
+        timeoutInMinutes: Int?,
+        reason: String?
     ) -> Endpoint<EmptyResponse> {
         .init(
             path: .banMember,
@@ -33,17 +67,18 @@ extension Endpoint {
             body: ChannelMemberBanRequestPayload(
                 userId: userId,
                 cid: cid,
+                shadow: shadow,
                 timeoutInMinutes: timeoutInMinutes,
                 reason: reason
             )
         )
     }
-    
+
     static func unbanMember(_ userId: UserId, cid: ChannelId) -> Endpoint<EmptyResponse> {
         .init(
             path: .banMember,
             method: .delete,
-            queryItems: ChannelMemberBanRequestPayload(userId: userId, cid: cid),
+            queryItems: ChannelMemberUnbanRequestPayload(userId: userId, cid: cid),
             requiresConnectionId: false,
             body: nil
         )
@@ -53,13 +88,23 @@ extension Endpoint {
 // MARK: - User flagging
 
 extension Endpoint {
-    static func flagUser(_ flag: Bool, with userId: UserId) -> Endpoint<FlagUserPayload> {
+    static func flagUser(
+        _ flag: Bool,
+        with userId: UserId,
+        reason: String? = nil,
+        extraData: [String: RawJSON]? = nil
+    ) -> Endpoint<FlagUserPayload> {
         .init(
             path: .flagUser(flag),
             method: .post,
             queryItems: nil,
             requiresConnectionId: false,
-            body: ["target_user_id": userId]
+            body: FlagRequestBody(
+                reason: reason,
+                targetMessageId: nil,
+                targetUserId: userId,
+                custom: extraData
+            )
         )
     }
 }
@@ -69,14 +114,21 @@ extension Endpoint {
 extension Endpoint {
     static func flagMessage(
         _ flag: Bool,
-        with messageId: MessageId
+        with messageId: MessageId,
+        reason: String? = nil,
+        extraData: [String: RawJSON]? = nil
     ) -> Endpoint<FlagMessagePayload> {
         .init(
             path: .flagMessage(flag),
             method: .post,
             queryItems: nil,
             requiresConnectionId: false,
-            body: ["target_message_id": messageId]
+            body: FlagRequestBody(
+                reason: reason,
+                targetMessageId: messageId,
+                targetUserId: nil,
+                custom: extraData
+            )
         )
     }
 }

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -10,6 +10,7 @@ enum MessagePayloadsCodingKeys: String, CodingKey, CaseIterable {
     case cid
     case type
     case user
+    case userId = "user_id"
     case createdAt = "created_at"
     case updatedAt = "updated_at"
     case deletedAt = "deleted_at"
@@ -28,6 +29,7 @@ enum MessagePayloadsCodingKeys: String, CodingKey, CaseIterable {
     case ownReactions = "own_reactions"
     case reactionScores = "reaction_scores"
     case reactionCounts = "reaction_counts"
+    case reactionGroups = "reaction_groups"
     case isSilent = "silent"
     case channel
     case pinned
@@ -39,6 +41,14 @@ enum MessagePayloadsCodingKeys: String, CodingKey, CaseIterable {
     case mml
     case imageLabels = "image_labels"
     case shadowed
+    case moderationDetails = "moderation_details" // moderation v1 key
+    case moderation // moderation v2 key
+    case messageTextUpdatedAt = "message_text_updated_at"
+    case poll
+    case pollId = "poll_id"
+    case set
+    case unset
+    case skipEnrichUrl = "skip_enrich_url"
 }
 
 extension MessagePayload {
@@ -64,6 +74,7 @@ class MessagePayload: Decodable {
     let createdAt: Date
     let updatedAt: Date
     let deletedAt: Date?
+    let messageTextUpdatedAt: Date?
     let text: String
     let command: String?
     let args: String?
@@ -80,20 +91,26 @@ class MessagePayload: Decodable {
     let ownReactions: [MessageReactionPayload]
     let reactionScores: [MessageReactionType: Int]
     let reactionCounts: [MessageReactionType: Int]
+    let reactionGroups: [MessageReactionType: MessageReactionGroupPayload]
     let attachments: [MessageAttachmentPayload]
     let isSilent: Bool
     let isShadowed: Bool
     let translations: [TranslationLanguage: String]?
+    let originalLanguage: String?
+    let moderationDetails: MessageModerationDetailsPayload? // moderation v1 payload
+    var moderation: MessageModerationDetailsPayload? // moderation v2 payload
 
     var pinned: Bool
     var pinnedBy: UserPayload?
     var pinnedAt: Date?
     var pinExpires: Date?
+    
+    var poll: PollPayload?
 
     /// Only message payload from `getMessage` endpoint contains channel data. It's a convenience workaround for having to
     /// make an extra call do get channel details.
     let channel: ChannelDetailPayload?
-    
+
     required init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: MessagePayloadsCodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -121,9 +138,11 @@ class MessagePayload: Decodable {
         reactionScores = try container
             .decodeIfPresent([String: Int].self, forKey: .reactionScores)?
             .mapKeys { MessageReactionType(rawValue: $0) } ?? [:]
-
         reactionCounts = try container
             .decodeIfPresent([String: Int].self, forKey: .reactionCounts)?
+            .mapKeys { MessageReactionType(rawValue: $0) } ?? [:]
+        reactionGroups = try container
+            .decodeIfPresent([String: MessageReactionGroupPayload].self, forKey: .reactionGroups)?
             .mapKeys { MessageReactionType(rawValue: $0) } ?? [:]
 
         // Because attachment objects can be malformed, we wrap those into `OptionalDecodable`
@@ -145,10 +164,15 @@ class MessagePayload: Decodable {
         pinnedAt = try container.decodeIfPresent(Date.self, forKey: .pinnedAt)
         pinExpires = try container.decodeIfPresent(Date.self, forKey: .pinExpires)
         quotedMessageId = try container.decodeIfPresent(MessageId.self, forKey: .quotedMessageId)
-        // Translations are only available for messages returned via `message.translate()`
-        translations = (try container.decodeIfPresent(MessageTranslationsPayload.self, forKey: .i18n))?.translated
+        let i18n = try container.decodeIfPresent(MessageTranslationsPayload.self, forKey: .i18n)
+        translations = i18n?.translated
+        originalLanguage = i18n?.originalLanguage
+        moderation = try container.decodeIfPresent(MessageModerationDetailsPayload.self, forKey: .moderation)
+        moderationDetails = try container.decodeIfPresent(MessageModerationDetailsPayload.self, forKey: .moderationDetails)
+        messageTextUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .messageTextUpdatedAt)
+        poll = try container.decodeIfPresent(PollPayload.self, forKey: .poll)
     }
-    
+
     init(
         id: String,
         cid: ChannelId? = nil,
@@ -172,6 +196,7 @@ class MessagePayload: Decodable {
         ownReactions: [MessageReactionPayload] = [],
         reactionScores: [MessageReactionType: Int],
         reactionCounts: [MessageReactionType: Int],
+        reactionGroups: [MessageReactionType: MessageReactionGroupPayload] = [:],
         isSilent: Bool,
         isShadowed: Bool,
         attachments: [MessageAttachmentPayload],
@@ -180,7 +205,12 @@ class MessagePayload: Decodable {
         pinnedBy: UserPayload? = nil,
         pinnedAt: Date? = nil,
         pinExpires: Date? = nil,
-        translations: [TranslationLanguage: String]? = nil
+        translations: [TranslationLanguage: String]? = nil,
+        originalLanguage: String? = nil,
+        moderation: MessageModerationDetailsPayload? = nil,
+        moderationDetails: MessageModerationDetailsPayload? = nil,
+        messageTextUpdatedAt: Date? = nil,
+        poll: PollPayload? = nil
     ) {
         self.id = id
         self.cid = cid
@@ -203,6 +233,7 @@ class MessagePayload: Decodable {
         self.ownReactions = ownReactions
         self.reactionScores = reactionScores
         self.reactionCounts = reactionCounts
+        self.reactionGroups = reactionGroups
         self.isSilent = isSilent
         self.isShadowed = isShadowed
         self.attachments = attachments
@@ -213,6 +244,11 @@ class MessagePayload: Decodable {
         self.pinExpires = pinExpires
         self.quotedMessageId = quotedMessageId
         self.translations = translations
+        self.originalLanguage = originalLanguage
+        self.moderation = moderation
+        self.moderationDetails = moderationDetails
+        self.messageTextUpdatedAt = messageTextUpdatedAt
+        self.poll = poll
     }
 }
 
@@ -221,6 +257,10 @@ struct MessageRequestBody: Encodable {
     let id: String
     let user: UserRequestBody
     let text: String
+
+    // Used at the moment only for creating a system a message.
+    let type: String?
+
     let command: String?
     let args: String?
     let parentId: String?
@@ -231,12 +271,14 @@ struct MessageRequestBody: Encodable {
     let mentionedUserIds: [UserId]
     var pinned: Bool
     var pinExpires: Date?
+    var pollId: String?
     let extraData: [String: RawJSON]
 
     init(
         id: String,
         user: UserRequestBody,
         text: String,
+        type: String? = nil,
         command: String? = nil,
         args: String? = nil,
         parentId: String? = nil,
@@ -247,11 +289,13 @@ struct MessageRequestBody: Encodable {
         mentionedUserIds: [UserId] = [],
         pinned: Bool = false,
         pinExpires: Date? = nil,
+        pollId: String? = nil,
         extraData: [String: RawJSON]
     ) {
         self.id = id
         self.user = user
         self.text = text
+        self.type = type
         self.command = command
         self.args = args
         self.parentId = parentId
@@ -262,9 +306,10 @@ struct MessageRequestBody: Encodable {
         self.mentionedUserIds = mentionedUserIds
         self.pinned = pinned
         self.pinExpires = pinExpires
+        self.pollId = pollId
         self.extraData = extraData
     }
-    
+
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: MessagePayloadsCodingKeys.self)
         try container.encode(id, forKey: .id)
@@ -277,15 +322,17 @@ struct MessageRequestBody: Encodable {
         try container.encode(pinned, forKey: .pinned)
         try container.encodeIfPresent(pinExpires, forKey: .pinExpires)
         try container.encode(isSilent, forKey: .isSilent)
+        try container.encodeIfPresent(pollId, forKey: .pollId)
+        try container.encodeIfPresent(type, forKey: .type)
 
         if !attachments.isEmpty {
             try container.encode(attachments, forKey: .attachments)
         }
-        
+
         if !mentionedUserIds.isEmpty {
             try container.encode(mentionedUserIds, forKey: .mentionedUsers)
         }
-        
+
         try extraData.encode(to: encoder)
     }
 }
@@ -304,8 +351,6 @@ struct MessageReactionsPayload: Decodable {
     let reactions: [MessageReactionPayload]
 }
 
-// TODO: Command???
-
 /// A command in a message, e.g. /giphy.
 public struct Command: Codable, Hashable {
     /// A command name.
@@ -315,7 +360,7 @@ public struct Command: Codable, Hashable {
     public let set: String
     /// Args for the command.
     public let args: String
-    
+
     public init(name: String = "", description: String = "", set: String = "", args: String = "") {
         self.name = name
         self.description = description

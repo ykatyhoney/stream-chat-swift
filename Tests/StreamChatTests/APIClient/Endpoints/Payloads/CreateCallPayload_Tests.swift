@@ -1,10 +1,10 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
 @testable import StreamChat
-import StreamChatTestHelpers
+import StreamChatTestTools
 import XCTest
 
 final class CreateCallPayload_Tests: XCTestCase {
@@ -18,7 +18,7 @@ final class CreateCallPayload_Tests: XCTestCase {
         let roomName: String = .unique
         let agoraUid: UInt = 10
         let agoraAppId: String = .unique
-        
+
         let expectedPayload = CreateCallPayload(
             call: CallPayload(
                 id: id,
@@ -46,16 +46,16 @@ final class CreateCallPayload_Tests: XCTestCase {
                     "room_id": roomId,
                     "room_name": roomName
                 ]
-            ],
+            ] as [String: Any],
             "token": token,
             "agora_uid": agoraUid,
             "agora_app_id": agoraAppId
         ]
         let mockJson = try JSONSerialization.data(withJSONObject: mockData)
-        
+
         // WHEN
         let payload = try JSONDecoder.default.decode(CreateCallPayload.self, from: mockJson)
-        
+
         // THEN
         XCTAssertEqual(expectedPayload, payload)
     }

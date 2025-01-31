@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
@@ -7,6 +7,8 @@
 import XCTest
 
 final class ChatMessage_Tests: XCTestCase {
+    // MARK: - isPinned
+
     func test_isPinned_whenHasPinDetails_shouldReturnTrue() {
         let message = ChatMessage.mock(
             id: .anonymous,
@@ -19,10 +21,10 @@ final class ChatMessage_Tests: XCTestCase {
                 expiresAt: Date.distantFuture
             )
         )
-        
+
         XCTAssertTrue(message.isPinned)
     }
-    
+
     func test_isPinned_whenEmptyPinDetails_shouldReturnFalse() {
         let message = ChatMessage.mock(
             id: .anonymous,
@@ -31,7 +33,7 @@ final class ChatMessage_Tests: XCTestCase {
             author: ChatUser.mock(id: .anonymous),
             pinDetails: nil
         )
-        
+
         XCTAssertFalse(message.isPinned)
     }
 
@@ -50,7 +52,9 @@ final class ChatMessage_Tests: XCTestCase {
 
         XCTAssertTrue(message.isPinned)
     }
-    
+
+    // MARK: - attachmentWithId
+
     func test_attachmentWithId_whenAttachmentDoesNotExist_returnsNil() {
         // Create message with attachments
         let message: ChatMessage = .mock(
@@ -67,21 +71,21 @@ final class ChatMessage_Tests: XCTestCase {
                     .asAnyAttachment
             ]
         )
-        
+
         // Generate random attachment id
         let randomAttachmentId: AttachmentId = .unique
-        
+
         // Get attachment by non-existing id
         let attachment = message.attachment(with: randomAttachmentId)
-        
+
         // Assert `nil` is returned
         XCTAssertNil(attachment)
     }
-    
+
     func test_attachmentWithId_whenAttachmentExists_returnsIt() {
         // Create attachment
         let targetAttachment: ChatMessageImageAttachment = .mock(id: .unique)
-        
+
         // Create message with target attachment
         let message: ChatMessage = .mock(
             id: .unique,
@@ -95,16 +99,18 @@ final class ChatMessage_Tests: XCTestCase {
                     .asAnyAttachment
             ]
         )
-        
+
         // Get attachment by id
         let attachment = message.attachment(with: targetAttachment.id)
-        
+
         // Assert correct attachment is returned.
         XCTAssertEqual(
             attachment?.attachment(payloadType: ImageAttachmentPayload.self),
             targetAttachment
         )
     }
+
+    // MARK: - totalReactionsCount
 
     func test_totalReactionsCount() {
         let message = ChatMessage.mock(
@@ -117,9 +123,9 @@ final class ChatMessage_Tests: XCTestCase {
 
         XCTAssertEqual(message.totalReactionsCount, 5)
     }
-    
+
     // MARK: - deliveryStatus
-    
+
     func test_deliveryStatus_whenMessageIsAuthoredByAnotherUser_returnsNil() {
         let message: ChatMessage = .mock(
             id: .unique,
@@ -129,10 +135,10 @@ final class ChatMessage_Tests: XCTestCase {
             author: .mock(id: .unique),
             isSentByCurrentUser: false
         )
-        
+
         XCTAssertNil(message.deliveryStatus)
     }
-    
+
     func test_deliveryStatus_whenMessageIsError_returnsNil() {
         let message: ChatMessage = .mock(
             id: .unique,
@@ -142,10 +148,10 @@ final class ChatMessage_Tests: XCTestCase {
             author: .mock(id: .unique),
             isSentByCurrentUser: true
         )
-        
+
         XCTAssertNil(message.deliveryStatus)
     }
-    
+
     func test_deliveryStatus_whenMessageIsSystem_returnsNil() {
         let message: ChatMessage = .mock(
             id: .unique,
@@ -155,10 +161,10 @@ final class ChatMessage_Tests: XCTestCase {
             author: .mock(id: .unique),
             isSentByCurrentUser: true
         )
-        
+
         XCTAssertNil(message.deliveryStatus)
     }
-    
+
     func test_deliveryStatus_whenMessageIsEphemeral_returnsNil() {
         let message: ChatMessage = .mock(
             id: .unique,
@@ -168,10 +174,10 @@ final class ChatMessage_Tests: XCTestCase {
             author: .mock(id: .unique),
             isSentByCurrentUser: true
         )
-        
+
         XCTAssertNil(message.deliveryStatus)
     }
-    
+
     func test_deliveryStatus_whenRegularMessageHasPendingLocalState_returnsPending() {
         for localState in LocalMessageState.pendingStates {
             let message: ChatMessage = .mock(
@@ -183,11 +189,11 @@ final class ChatMessage_Tests: XCTestCase {
                 localState: localState,
                 isSentByCurrentUser: true
             )
-            
+
             XCTAssertEqual(message.deliveryStatus, .pending)
         }
     }
-    
+
     func test_deliveryStatus_whenThreadReplyHasPendingLocalState_returnsPending() {
         for localState in LocalMessageState.pendingStates {
             let message: ChatMessage = .mock(
@@ -199,11 +205,11 @@ final class ChatMessage_Tests: XCTestCase {
                 localState: localState,
                 isSentByCurrentUser: true
             )
-            
+
             XCTAssertEqual(message.deliveryStatus, .pending)
         }
     }
-    
+
     func test_deliveryStatus_whenRegularMessageHasFailedLocalState_returnsFailed() {
         for localState in LocalMessageState.failedStates {
             let message: ChatMessage = .mock(
@@ -215,11 +221,11 @@ final class ChatMessage_Tests: XCTestCase {
                 localState: localState,
                 isSentByCurrentUser: true
             )
-            
+
             XCTAssertEqual(message.deliveryStatus, .failed)
         }
     }
-    
+
     func test_deliveryStatus_whenThreadReplyHasFailedLocalState_returnsFailed() {
         for localState in LocalMessageState.failedStates {
             let message: ChatMessage = .mock(
@@ -231,11 +237,11 @@ final class ChatMessage_Tests: XCTestCase {
                 localState: localState,
                 isSentByCurrentUser: true
             )
-            
+
             XCTAssertEqual(message.deliveryStatus, .failed)
         }
     }
-    
+
     func test_deliveryStatus_whenRegularMessageIsSent_returnsSent() {
         let message: ChatMessage = .mock(
             id: .unique,
@@ -247,10 +253,10 @@ final class ChatMessage_Tests: XCTestCase {
             isSentByCurrentUser: true,
             readBy: []
         )
-        
+
         XCTAssertEqual(message.deliveryStatus, .sent)
     }
-    
+
     func test_deliveryStatus_whenThreadReplyIsSent_returnsSent() {
         let message: ChatMessage = .mock(
             id: .unique,
@@ -262,10 +268,10 @@ final class ChatMessage_Tests: XCTestCase {
             isSentByCurrentUser: true,
             readBy: []
         )
-        
+
         XCTAssertEqual(message.deliveryStatus, .sent)
     }
-    
+
     func test_deliveryStatus_whenRegularMessageIsRead_returnsRead() {
         let message: ChatMessage = .mock(
             id: .unique,
@@ -277,10 +283,10 @@ final class ChatMessage_Tests: XCTestCase {
             isSentByCurrentUser: true,
             readBy: [.mock(id: .unique)]
         )
-        
+
         XCTAssertEqual(message.deliveryStatus, .read)
     }
-    
+
     func test_deliveryStatus_whenThreadReplyIsRead_returnsRead() {
         let message: ChatMessage = .mock(
             id: .unique,
@@ -292,18 +298,18 @@ final class ChatMessage_Tests: XCTestCase {
             isSentByCurrentUser: true,
             readBy: [.mock(id: .unique)]
         )
-        
+
         XCTAssertEqual(message.deliveryStatus, .read)
     }
 
     func test_isLocalOnly_returnsTheCorrectValue() {
         let stateToLocalOnly: [LocalMessageState: Bool] = [
-            .pendingSync: true,
-            .syncing: true,
-            .syncingFailed: true,
             .pendingSend: true,
             .sending: true,
             .sendingFailed: true,
+            .pendingSync: false,
+            .syncing: false,
+            .syncingFailed: false,
             .deleting: false,
             .deletingFailed: false
         ]
@@ -311,5 +317,123 @@ final class ChatMessage_Tests: XCTestCase {
         stateToLocalOnly.forEach { state, value in
             XCTAssertEqual(state.isLocalOnly, value)
         }
+    }
+
+    func test_isLocalOnly_whenLocalStateIsLocalOnly_returnsTrue() {
+        let message: ChatMessage = .mock(
+            type: .regular,
+            localState: .pendingSend
+        )
+
+        XCTAssertEqual(message.isLocalOnly, true)
+    }
+
+    func test_isLocalOnly_whenLocalStateIsNil_whenTypeIsEphemeral_returnsTrue() {
+        let message: ChatMessage = .mock(
+            type: .ephemeral,
+            localState: nil
+        )
+
+        XCTAssertEqual(message.isLocalOnly, true)
+    }
+
+    func test_isLocalOnly_whenLocalStateIsNil_whenTypeIsError_returnsTrue() {
+        let message: ChatMessage = .mock(
+            type: .error,
+            localState: nil
+        )
+
+        XCTAssertEqual(message.isLocalOnly, true)
+    }
+
+    func test_isLocalOnly_whenLocalStateIsNil_whenTypeNotEphemeralOrError_returnsFalse() {
+        let message: ChatMessage = .mock(
+            type: .regular,
+            localState: nil
+        )
+
+        XCTAssertEqual(message.isLocalOnly, false)
+    }
+
+    // MARK: - voiceRecordingAttachments
+
+    func test_voiceRecordingAttachments_returnsExpectedResult() throws {
+        var attachments: [AnyChatMessageAttachment] = [
+            .dummy(type: .audio),
+            .dummy(type: .file),
+            .dummy(type: .giphy),
+            .dummy(type: .image),
+            .dummy(type: .linkPreview),
+            .dummy(type: .unknown),
+            .dummy(type: .video)
+        ]
+
+        let expectedIds: [AttachmentId] = [.unique, .unique]
+        try attachments.append(contentsOf: expectedIds.map {
+            let payload = try JSONEncoder().encode(
+                VoiceRecordingAttachmentPayload(
+                    title: nil,
+                    voiceRecordingRemoteURL: .unique(),
+                    file: .init(url: .localYodaQuote),
+                    duration: nil,
+                    waveformData: nil,
+                    extraData: nil
+                )
+            )
+            return .dummy(
+                id: $0,
+                type: .voiceRecording,
+                payload: payload
+            )
+        })
+        let messageWithAttachments = ChatMessage.mock(attachments: attachments)
+
+        let actualIds = messageWithAttachments.voiceRecordingAttachments.map(\.id)
+
+        XCTAssertEqual(actualIds, expectedIds)
+    }
+
+    func test_replacing() {
+        let originalMessage = ChatMessage.mock(
+            id: .unique,
+            cid: .unique,
+            text: "Original text",
+            extraData: ["original": .string("data")],
+            attachments: [
+                .dummy(id: .init(cid: .unique, messageId: .unique, index: 0))
+            ]
+        )
+
+        // Test replacing all fields
+        let allFieldsReplaced = originalMessage.replacing(
+            text: "New text",
+            extraData: ["new": .string("data")],
+            attachments: [
+                .dummy(id: .init(cid: .unique, messageId: .unique, index: 99))
+            ]
+        )
+
+        // Verify replaced fields
+        XCTAssertEqual(allFieldsReplaced.text, "New text")
+        XCTAssertEqual(allFieldsReplaced.extraData["new"]?.stringValue, "data")
+        XCTAssertEqual(allFieldsReplaced.allAttachments.first?.id.index, 99)
+
+        // Verify other fields remain unchanged
+        XCTAssertEqual(allFieldsReplaced.id, originalMessage.id)
+        XCTAssertEqual(allFieldsReplaced.cid, originalMessage.cid)
+        XCTAssertEqual(allFieldsReplaced.type, originalMessage.type)
+        XCTAssertEqual(allFieldsReplaced.author, originalMessage.author)
+        XCTAssertEqual(allFieldsReplaced.createdAt, originalMessage.createdAt)
+
+        // Test replacing some fields while erasing others
+        let partialReplacement = originalMessage.replacing(
+            text: "New text",
+            extraData: nil,
+            attachments: nil
+        )
+
+        XCTAssertEqual(partialReplacement.text, "New text")
+        XCTAssertEqual(partialReplacement.extraData, [:])
+        XCTAssertEqual(partialReplacement.allAttachments, [])
     }
 }

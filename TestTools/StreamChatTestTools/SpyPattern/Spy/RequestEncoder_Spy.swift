@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -7,13 +7,14 @@ import Foundation
 import XCTest
 
 final class RequestEncoder_Spy: RequestEncoder, Spy {
-    var recordedFunctions: [String] = []
+    let spyState = SpyState()
     let init_baseURL: URL
     let init_apiKey: APIKey
 
     weak var connectionDetailsProviderDelegate: ConnectionDetailsProviderDelegate?
 
     var encodeRequest: Result<URLRequest, Error>? = .success(URLRequest(url: .unique()))
+    var onEncodeRequestCall: (() -> Void)?
     var encodeRequest_endpoints: [AnyEndpoint] = []
     var encodeRequest_completion: ((Result<URLRequest, Error>) -> Void)?
 
@@ -28,6 +29,7 @@ final class RequestEncoder_Spy: RequestEncoder, Spy {
         if let result = encodeRequest {
             completion(result)
         }
+        onEncodeRequestCall?()
     }
 
     required init(baseURL: URL, apiKey: APIKey) {

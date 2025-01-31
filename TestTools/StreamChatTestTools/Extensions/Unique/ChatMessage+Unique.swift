@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -22,27 +22,37 @@ extension ChatMessage {
             showReplyInChannel: true,
             replyCount: 2,
             extraData: [:],
-            quotedMessage: { nil },
+            quotedMessage: nil,
             isBounced: false,
             isSilent: false,
             isShadowed: false,
             reactionScores: ["like": 1],
             reactionCounts: ["like": 1],
-            author: { .mock(id: .unique) },
-            mentionedUsers: { [] },
-            threadParticipants: { [] },
-            attachments: { [] },
-            latestReplies: { [] },
+            reactionGroups: [
+                "like": .init(
+                    type: "like",
+                    sumScores: 1, count: 1,
+                    firstReactionAt: .unique,
+                    lastReactionAt: .unique
+                )
+            ],
+            author: .mock(id: .unique),
+            mentionedUsers: [],
+            threadParticipants: [],
+            attachments: [],
+            latestReplies: [],
             localState: nil,
             isFlaggedByCurrentUser: false,
-            latestReactions: { [] },
-            currentUserReactions: { [] },
+            latestReactions: [],
+            currentUserReactions: [],
             isSentByCurrentUser: false,
             pinDetails: nil,
             translations: nil,
-            readBy: { [] },
-            readByCount: { 0 },
-            underlyingContext: nil
+            originalLanguage: nil,
+            moderationDetails: nil,
+            readBy: [],
+            poll: nil,
+            textUpdatedAt: nil
         )
     }
 }

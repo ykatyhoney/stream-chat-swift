@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
@@ -34,17 +34,61 @@ final class WebSocketConnectPayload_Tests: XCTestCase {
                 "image": "https://path/to/image",
                 "color": "blue",
                 "invisible": true
-            ]
+            ] as [String: Any]
         ]
         AssertJSONEqual(serialized, expected)
     }
-    
+
+    func test_encodesWebSocket_whenUserInfoWithDefaultValues() throws {
+        let payload = WebSocketConnectPayload(userInfo: .init(id: "tommaso"))
+        let serialized = try JSONEncoder.stream.encode(payload)
+
+        /// By default all data in UserInfo should be `nil` besides the ID which is required.
+        let expected: [String: Any] = [
+            "user_id": payload.userDetails.id,
+            "server_determines_connection_id": true,
+            "user_details": [
+                "id": payload.userDetails.id
+            ] as [String: Any]
+        ]
+        AssertJSONEqual(serialized, expected)
+    }
+
     func test_EncodesWebSocket_whenConnectPayloadHasNoImage() throws {
         let custom: [String: RawJSON] = [
             "color": .string("blue")
         ]
         let payload = WebSocketConnectPayload(userInfo: .init(id: "tommaso", name: "tommaso", imageURL: nil, extraData: custom))
-        
+
+        let serialized = try JSONEncoder.stream.encode(payload)
+        let expected: [String: Any] = [
+            "user_id": payload.userDetails.id,
+            "server_determines_connection_id": true,
+            "user_details": [
+                "id": payload.userDetails.id,
+                "name": payload.userDetails.name!,
+                "color": "blue"
+            ] as [String: Any]
+        ]
+        AssertJSONEqual(serialized, expected)
+    }
+
+    func test_encodesWebSocket_whenConnectPayloadHasNoInvisible() throws {
+        let custom: [String: RawJSON] = [
+            "color": .string("blue")
+        ]
+        let payload = WebSocketConnectPayload(userInfo: .init(
+            id: "tommaso",
+            name: "tommaso",
+            imageURL: nil,
+            isInvisible: nil,
+            privacySettings: .init(
+                typingIndicators: .init(enabled: true),
+                readReceipts: .init(enabled: true)
+            ),
+            extraData: custom
+        ))
+
         let serialized = try JSONEncoder.stream.encode(payload)
         let expected: [String: Any] = [
             "user_id": payload.userDetails.id,
@@ -53,8 +97,11 @@ final class WebSocketConnectPayload_Tests: XCTestCase {
                 "id": payload.userDetails.id,
                 "name": payload.userDetails.name!,
                 "color": "blue",
-                "invisible": false
-            ]
+                "privacy_settings": [
+                    "typing_indicators": ["enabled": true],
+                    "read_receipts": ["enabled": true]
+                ]
+            ] as [String: Any]
         ]
         AssertJSONEqual(serialized, expected)
     }

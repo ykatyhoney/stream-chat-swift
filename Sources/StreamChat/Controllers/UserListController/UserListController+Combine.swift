@@ -1,17 +1,16 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Combine
 import Foundation
 
-@available(iOS 13, *)
 extension ChatUserListController {
     /// A publisher emitting a new value every time the state of the controller changes.
     public var statePublisher: AnyPublisher<DataController.State, Never> {
         basePublishers.state.keepAlive(self)
     }
-    
+
     /// A publisher emitting a new value every time the list of the users matching the query changes.
     public var usersChangesPublisher: AnyPublisher<[ListChange<ChatUser>], Never> {
         basePublishers.usersChanges.keepAlive(self)
@@ -23,28 +22,27 @@ extension ChatUserListController {
     class BasePublishers {
         /// The wrapper controller
         unowned let controller: ChatUserListController
-        
+
         /// A backing subject for `statePublisher`.
         let state: CurrentValueSubject<DataController.State, Never>
-        
+
         /// A backing subject for `usersChangesPublisher`.
         let usersChanges: PassthroughSubject<[ListChange<ChatUser>], Never> = .init()
-                
+
         init(controller: ChatUserListController) {
             self.controller = controller
             state = .init(controller.state)
-            
+
             controller.multicastDelegate.add(additionalDelegate: self)
         }
     }
 }
 
-@available(iOS 13, *)
 extension ChatUserListController.BasePublishers: ChatUserListControllerDelegate {
     func controller(_ controller: DataController, didChangeState state: DataController.State) {
         self.state.send(state)
     }
-    
+
     func controller(
         _ controller: ChatUserListController,
         didChangeUsers changes: [ListChange<ChatUser>]

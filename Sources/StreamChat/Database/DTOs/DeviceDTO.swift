@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
@@ -9,7 +9,7 @@ import Foundation
 class DeviceDTO: NSManagedObject {
     @NSManaged var id: String
     @NSManaged var createdAt: DBDate?
-    
+
     @NSManaged var user: CurrentUserDTO
 }
 
@@ -23,7 +23,7 @@ extension DeviceDTO {
     static func load(id: String, context: NSManagedObjectContext) -> DeviceDTO? {
         load(by: id, context: context).first
     }
-    
+
     /// If a Device with the given id exists in the context, fetches and returns it. Otherwise creates a new
     /// `DeviceDTO` with the given id.
     ///
@@ -35,7 +35,7 @@ extension DeviceDTO {
         if let existing = load(id: id, context: context) {
             return existing
         }
-        
+
         let request = fetchRequest(id: id)
         let new = NSEntityDescription.insertNewObject(into: context, for: request)
         new.id = id
@@ -45,7 +45,7 @@ extension DeviceDTO {
 
 extension DeviceDTO {
     func asModel() throws -> Device {
-        guard isValid else { throw InvalidModel(self) }
+        try isNotDeleted()
         return Device(id: id, createdAt: createdAt?.bridgeDate)
     }
 }

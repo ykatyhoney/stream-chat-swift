@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
@@ -18,6 +18,8 @@ public extension ChatClient {
 }
 
 /// `ChatMessageSearchController` is a controller class which allows observing a list of messages based on the provided query.
+///
+/// - Note: For an async-await alternative of the `ChatMessageSearchController`, please check ``MessageSearch`` in the async-await supported [state layer](https://getstream.io/chat/docs/sdk/ios/client/state-layer/state-layer-overview/).
 public class ChatMessageSearchController: DataController, DelegateCallable, DataStoreProvider {
     /// The `ChatClient` instance this controller belongs to.
     public let client: ChatClient
@@ -26,12 +28,12 @@ public class ChatMessageSearchController: DataController, DelegateCallable, Data
     init(client: ChatClient, environment: Environment = .init()) {
         self.client = client
         self.environment = environment
-        
+
         super.init()
-        
+
         setMessagesObserver()
     }
-    
+
     deinit {
         let query = self.query
         client.databaseContainer.write { session in
@@ -71,50 +73,48 @@ public class ChatMessageSearchController: DataController, DelegateCallable, Data
             client.databaseContainer,
             client.apiClient
         )
-    
+
     /// Used for observing the database for changes.
-    @Cached private var messagesObserver: ListDatabaseObserver<ChatMessage, MessageDTO>?
-    
+    private var messagesObserver: BackgroundListDatabaseObserver<ChatMessage, MessageDTO>?
+
     private func startObserversIfNeeded() {
         guard state == .initialized else { return }
         do {
             try messagesObserver?.startObserving()
-            
+
             state = .localDataFetched
         } catch {
             log.error("Failed to perform fetch request with error: \(error). This is an internal error.")
             state = .localDataFetchFailed(ClientError(with: error))
         }
     }
-    
+
     private func setMessagesObserver() {
-        _messagesObserver.computeValue = { [unowned self] in
-            let observer = ListDatabaseObserver(
-                context: self.client.databaseContainer.viewContext,
-                fetchRequest: MessageDTO.messagesFetchRequest(
-                    for: lastQuery ?? query
-                ),
-                itemCreator: { try $0.asModel() as ChatMessage }
-            )
-            observer.onChange = { [weak self] changes in
-                self?.delegateCallback { [weak self] in
-                    guard let self = self else {
-                        log.warning("Callback called while self is nil")
-                        return
-                    }
-                    $0.controller(self, didChangeMessages: changes)
+        let observer = BackgroundListDatabaseObserver(
+            database: client.databaseContainer,
+            fetchRequest: MessageDTO.messagesFetchRequest(
+                for: lastQuery ?? query
+            ),
+            itemCreator: { try $0.asModel() as ChatMessage },
+            itemReuseKeyPaths: (\ChatMessage.id, \MessageDTO.id)
+        )
+        observer.onDidChange = { [weak self] changes in
+            self?.delegateCallback { [weak self] in
+                guard let self = self else {
+                    log.warning("Callback called while self is nil")
+                    return
                 }
+                $0.controller(self, didChangeMessages: changes)
             }
-            
-            return observer
         }
+
+        messagesObserver = observer
     }
 
     var _basePublishers: Any?
     /// An internal backing object for all publicly available Combine publishers. We use it to simplify the way we expose
     /// publishers. Instead of creating custom `Publisher` types, we use `CurrentValueSubject` and `PassthroughSubject` internally,
     /// and expose the published values by mapping them to a read-only `AnyPublisher` type.
-    @available(iOS 13, *)
     var basePublishers: BasePublishers {
         if let value = _basePublishers as? BasePublishers {
             return value
@@ -152,9 +152,7 @@ public class ChatMessageSearchController: DataController, DelegateCallable, Data
             completion?(ClientError.CurrentUserDoesNotExist("For message search with text, a current user must be logged in"))
             return
         }
-        // We don't choose `guard` here since the expression
-        // guard !text.isEmpty, lastQuery != nil else { ...clearSearch(for: lastQuery!).. }
-        // would be much more complex to parse than this `if` statement
+
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let lastQuery = lastQuery {
             messageUpdater.clearSearchResults(for: lastQuery) { error in
                 self.nextPageCursor = nil
@@ -162,20 +160,22 @@ public class ChatMessageSearchController: DataController, DelegateCallable, Data
             }
             return
         }
+
         let query = MessageSearchQuery(
             channelFilter: .containMembers(userIds: [currentUserId]),
-            messageFilter: .queryText(text)
+            messageFilter: .autocomplete(.text, text: text),
+            sort: [.init(key: .createdAt, isAscending: false)]
         )
+        
         search(query: query, completion: completion)
     }
 
     private func resetMessagesObserver() {
-        state = .initialized
         setMessagesObserver()
-        _messagesObserver.reset()
+        state = .initialized
         startObserversIfNeeded()
     }
-    
+
     /// Searches messages for the given query.
     ///
     /// When this function is called, `messages` property of this
@@ -194,20 +194,22 @@ public class ChatMessageSearchController: DataController, DelegateCallable, Data
     public func search(query: MessageSearchQuery, completion: ((_ error: Error?) -> Void)? = nil) {
         var query = query
         query.filterHash = explicitFilterHash
-        
+
         lastQuery = query
-        
+
         // To respect sorting the user passed, we must reset messagesObserver
         resetMessagesObserver()
-        
+
         messageUpdater.search(query: query, policy: .replace) { result in
-            if case let .success(payload) = result {
-                self.updateNextPageCursor(with: payload)
+            if case let .success(response) = result {
+                self.updateNextPageCursor(with: response.payload)
             }
 
             let error = result.error
             self.state = error == nil ? .remoteDataFetched : .remoteDataFetchFailed(ClientError(with: error))
-            self.callback { completion?(error) }
+            self.callback {
+                completion?(error)
+            }
         }
     }
 
@@ -235,8 +237,8 @@ public class ChatMessageSearchController: DataController, DelegateCallable, Data
         }
 
         messageUpdater.search(query: updatedQuery) { result in
-            if case let .success(payload) = result {
-                self.updateNextPageCursor(with: payload)
+            if case let .success(response) = result {
+                self.updateNextPageCursor(with: response.payload)
             }
             self.callback { completion?(result.error) }
         }
@@ -255,14 +257,6 @@ extension ChatMessageSearchController {
             _ database: DatabaseContainer,
             _ apiClient: APIClient
         ) -> MessageUpdater = MessageUpdater.init
-
-        var createMessageDatabaseObserver: (
-            _ context: NSManagedObjectContext,
-            _ fetchRequest: NSFetchRequest<MessageDTO>,
-            _ itemCreator: @escaping (MessageDTO) -> ChatMessage
-        ) -> ListDatabaseObserver<ChatMessage, MessageDTO> = {
-            ListDatabaseObserver(context: $0, fetchRequest: $1, itemCreator: $2)
-        }
     }
 }
 

@@ -25,10 +25,8 @@ if [[ $dependency_directory == *"Nuke"* ]]; then
 	dependency_url="git@github.com:kean/Nuke.git"
 elif [[ $dependency_directory == *"SwiftyGif"* ]]; then
 	dependency_url="git@github.com:kirualex/SwiftyGif.git"
-elif [[ $dependency_directory == *"Starscream"* ]]; then
-	dependency_url="git@github.com:daltoniam/Starscream.git"
 elif [[ $dependency_directory == *"SwiftyMarkdown"* ]]; then
-    dependency_url="git@github.com:SimonFairbairn/SwiftyMarkdown.git"
+    dependency_url="git@github.com:GetStream/SwiftyMarkdown.git"
 elif [[ $dependency_directory == *"DifferenceKit"* ]]; then
 	dependency_url="git@github.com:ra1028/DifferenceKit.git"
 else
@@ -41,7 +39,9 @@ if ! [[ -d "$dependency_directory" ]]; then
     git clone $dependency_url $dependency_directory
 fi
 
-cd $dependency_directory
+current_directory=$(pwd)
+
+cd "$dependency_directory"
 
 ensure_clean_git
 
@@ -50,7 +50,7 @@ git checkout $version
 
 ensure_clean_git
 
-cd -
+cd "$current_directory"
 
 echo "→ Copying source files"
 rm -rf $output_directory
@@ -65,3 +65,15 @@ do
 done
 
 rm -rf $dependency_directory
+
+if [[ $dependency_directory == *"DifferenceKit"* ]]; then
+    # We currently use customized UIKit extensions in Utils/DifferenceKit+Stream.swift
+    rm $output_directory/Extensions/UIKitExtension.swift
+fi
+
+if [[ $dependency_directory == *"SwiftyMarkdown"* ]]; then
+    # We currently use customized version of SwiftyMarkdown
+	git restore $output_directory/SwiftyMarkdown/PerformanceLog.swift || true
+    git restore $output_directory/SwiftyMarkdown/SwiftyLineProcessor.swift || true
+    git restore $output_directory/SwiftyMarkdown/SwiftyTokeniser.swift || true
+fi

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -15,5 +15,36 @@ extension Endpoint {
             requiresConnectionId: false,
             body: ["payload": query]
         )
+    }
+
+    static func partialMemberUpdate(
+        userId: UserId,
+        cid: ChannelId,
+        updates: MemberUpdatePayload?,
+        unset: [String]?
+    ) -> Endpoint<PartialMemberUpdateResponse> {
+        var body: [String: AnyEncodable] = [:]
+        if let updates {
+            body["set"] = AnyEncodable(updates)
+        }
+        if let unset {
+            body["unset"] = AnyEncodable(unset)
+        }
+
+        return .init(
+            path: .partialMemberUpdate(userId: userId, cid: cid),
+            method: .patch,
+            queryItems: nil,
+            requiresConnectionId: false,
+            body: body
+        )
+    }
+}
+
+struct PartialMemberUpdateResponse: Decodable {
+    var channelMember: MemberPayload
+
+    enum CodingKeys: String, CodingKey {
+        case channelMember = "channel_member"
     }
 }

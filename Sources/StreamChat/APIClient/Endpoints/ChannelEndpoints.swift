@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -18,7 +18,7 @@ extension Endpoint {
     static func createChannel(query: ChannelQuery) -> Endpoint<ChannelPayload> {
         createOrUpdateChannel(path: .createChannel(query.apiPath), query: query)
     }
-    
+
     static func updateChannel(query: ChannelQuery) -> Endpoint<ChannelPayload> {
         createOrUpdateChannel(path: .updateChannel(query.apiPath), query: query)
     }
@@ -32,7 +32,7 @@ extension Endpoint {
             body: query
         )
     }
-    
+
     static func updateChannel(channelPayload: ChannelEditDetailPayload)
         -> Endpoint<EmptyResponse> {
         .init(
@@ -43,17 +43,38 @@ extension Endpoint {
             body: ["data": channelPayload]
         )
     }
+
+    static func partialChannelUpdate(updates: ChannelEditDetailPayload, unsetProperties: [String]) -> Endpoint<EmptyResponse> {
+        let body: [String: AnyEncodable] = [
+            "set": AnyEncodable(updates),
+            "unset": AnyEncodable(unsetProperties)
+        ]
+
+        return .init(
+            path: .channelUpdate(updates.apiPath),
+            method: .patch,
+            queryItems: nil,
+            requiresConnectionId: false,
+            body: body
+        )
+    }
     
-    static func muteChannel(cid: ChannelId, mute: Bool) -> Endpoint<EmptyResponse> {
-        .init(
+    static func muteChannel(cid: ChannelId, mute: Bool, expiration: Int? = nil) -> Endpoint<EmptyResponse> {
+        var body: [String: AnyEncodable] = ["channel_cid": AnyEncodable(cid)]
+        
+        if let expiration = expiration {
+            body["expiration"] = AnyEncodable(expiration)
+        }
+        
+        return .init(
             path: .muteChannel(mute),
             method: .post,
             queryItems: nil,
             requiresConnectionId: true,
-            body: ["channel_cid": cid]
+            body: body
         )
     }
-    
+
     static func deleteChannel(cid: ChannelId) -> Endpoint<EmptyResponse> {
         .init(
             path: .deleteChannel(cid.apiPath),
@@ -92,7 +113,7 @@ extension Endpoint {
             body: ["clear_history": clearHistory]
         )
     }
-    
+
     static func showChannel(cid: ChannelId) -> Endpoint<EmptyResponse> {
         .init(
             path: .showChannel(cid.apiPath, true),
@@ -102,23 +123,36 @@ extension Endpoint {
             body: nil
         )
     }
-    
-    static func sendMessage(cid: ChannelId, messagePayload: MessageRequestBody)
+
+    static func sendMessage(cid: ChannelId, messagePayload: MessageRequestBody, skipPush: Bool, skipEnrichUrl: Bool)
         -> Endpoint<MessagePayload.Boxed> {
-        .init(
+        let body: [String: AnyEncodable] = [
+            "message": AnyEncodable(messagePayload),
+            "skip_push": AnyEncodable(skipPush),
+            "skip_enrich_url": AnyEncodable(skipEnrichUrl)
+        ]
+        return .init(
             path: .sendMessage(cid),
             method: .post,
             queryItems: nil,
             requiresConnectionId: false,
-            body: ["message": messagePayload]
+            body: body
         )
     }
-    
-    static func addMembers(cid: ChannelId, userIds: Set<UserId>, hideHistory: Bool) -> Endpoint<EmptyResponse> {
-        let body: [String: AnyEncodable] = [
-            "add_members": AnyEncodable(userIds),
+
+    static func addMembers(
+        cid: ChannelId,
+        members: [MemberInfoRequest],
+        hideHistory: Bool,
+        messagePayload: MessageRequestBody? = nil
+    ) -> Endpoint<EmptyResponse> {
+        var body: [String: AnyEncodable] = [
+            "add_members": AnyEncodable(members),
             "hide_history": AnyEncodable(hideHistory)
         ]
+        if let messagePayload = messagePayload {
+            body["message"] = AnyEncodable(messagePayload)
+        }
         return .init(
             path: .channelUpdate(cid.apiPath),
             method: .post,
@@ -127,17 +161,27 @@ extension Endpoint {
             body: body
         )
     }
-    
-    static func removeMembers(cid: ChannelId, userIds: Set<UserId>) -> Endpoint<EmptyResponse> {
-        .init(
+
+    static func removeMembers(
+        cid: ChannelId,
+        userIds: Set<UserId>,
+        messagePayload: MessageRequestBody? = nil
+    ) -> Endpoint<EmptyResponse> {
+        var body: [String: AnyEncodable] = [
+            "remove_members": AnyEncodable(userIds)
+        ]
+        if let messagePayload = messagePayload {
+            body["message"] = AnyEncodable(messagePayload)
+        }
+        return .init(
             path: .channelUpdate(cid.apiPath),
             method: .post,
             queryItems: nil,
             requiresConnectionId: false,
-            body: ["remove_members": userIds]
+            body: body
         )
     }
-    
+
     static func inviteMembers(
         cid: ChannelId,
         userIds: Set<UserId>
@@ -150,7 +194,7 @@ extension Endpoint {
             body: ["invites": userIds]
         )
     }
-    
+
     static func acceptInvite(
         cid: ChannelId,
         message: String?
@@ -167,7 +211,7 @@ extension Endpoint {
             )
         )
     }
-    
+
     static func rejectInvite(cid: ChannelId) -> Endpoint<EmptyResponse> {
         .init(
             path: .channelUpdate(cid.apiPath),
@@ -181,7 +225,7 @@ extension Endpoint {
             )
         )
     }
-    
+
     static func markRead(cid: ChannelId) -> Endpoint<EmptyResponse> {
         .init(
             path: .markChannelRead(cid.apiPath),
@@ -191,7 +235,20 @@ extension Endpoint {
             body: nil
         )
     }
-    
+
+    static func markUnread(cid: ChannelId, messageId: MessageId, userId: UserId) -> Endpoint<EmptyResponse> {
+        .init(
+            path: .markChannelUnread(cid.apiPath),
+            method: .post,
+            queryItems: nil,
+            requiresConnectionId: false,
+            body: [
+                "message_id": messageId,
+                "user_id": userId
+            ]
+        )
+    }
+
     static func markAllRead() -> Endpoint<EmptyResponse> {
         .init(
             path: .markAllChannelsRead,
@@ -201,7 +258,7 @@ extension Endpoint {
             body: nil
         )
     }
-    
+
     static func sendEvent(cid: ChannelId, eventType: EventType) -> Endpoint<EmptyResponse> {
         .init(
             path: .channelEvent(cid.apiPath),
@@ -211,7 +268,7 @@ extension Endpoint {
             body: ["event": ["type": eventType]]
         )
     }
-    
+
     static func sendEvent<Payload: CustomEventPayload>(_ payload: Payload, cid: ChannelId) -> Endpoint<EmptyResponse> {
         .init(
             path: .channelEvent(cid.apiPath),
@@ -221,7 +278,7 @@ extension Endpoint {
             body: ["event": CustomEventRequestBody(payload: payload)]
         )
     }
-    
+
     static func startTypingEvent(cid: ChannelId, parentMessageId: MessageId?) -> Endpoint<EmptyResponse> {
         let eventType = EventType.userStartTyping
         let body: Encodable
@@ -238,7 +295,7 @@ extension Endpoint {
             body: body
         )
     }
-    
+
     static func stopTypingEvent(cid: ChannelId, parentMessageId: MessageId?) -> Endpoint<EmptyResponse> {
         let eventType = EventType.userStopTyping
         let body: Encodable
@@ -255,7 +312,7 @@ extension Endpoint {
             body: body
         )
     }
-    
+
     static func enableSlowMode(cid: ChannelId, cooldownDuration: Int) -> Endpoint<EmptyResponse> {
         .init(
             path: .channelUpdate(cid.apiPath),
@@ -265,7 +322,7 @@ extension Endpoint {
             body: ["set": ["cooldown": cooldownDuration]]
         )
     }
-    
+
     static func stopWatching(cid: ChannelId) -> Endpoint<EmptyResponse> {
         .init(
             path: .stopWatchingChannel(cid.apiPath),
@@ -275,7 +332,7 @@ extension Endpoint {
             body: nil
         )
     }
-    
+
     static func channelWatchers(query: ChannelWatcherListQuery) -> Endpoint<ChannelPayload> {
         .init(
             path: .updateChannel(query.cid.apiPath),
@@ -285,7 +342,7 @@ extension Endpoint {
             body: query
         )
     }
-    
+
     static func freezeChannel(_ freeze: Bool, cid: ChannelId) -> Endpoint<EmptyResponse> {
         .init(
             path: .channelUpdate(cid.apiPath),
@@ -295,7 +352,7 @@ extension Endpoint {
             body: ["set": ["frozen": freeze]]
         )
     }
-    
+
     static func pinnedMessages(cid: ChannelId, query: PinnedMessagesQuery) -> Endpoint<PinnedMessagesPayload> {
         .init(
             path: .pinnedMessages(cid.apiPath),
@@ -304,5 +361,21 @@ extension Endpoint {
             requiresConnectionId: false,
             body: ["payload": query]
         )
+    }
+}
+
+struct MemberInfoRequest: Encodable {
+    let userId: UserId
+    let extraData: [String: RawJSON]?
+
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case extraData
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(userId, forKey: .userId)
+        try extraData?.encode(to: encoder)
     }
 }

@@ -1,10 +1,10 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
 
-class AsyncOperation: BaseOperation {
+class AsyncOperation: BaseOperation, @unchecked Sendable {
     enum Output {
         case retry
         case `continue`
@@ -21,6 +21,7 @@ class AsyncOperation: BaseOperation {
     init(maxRetries: Int = 0, executionBlock: @escaping (AsyncOperation, @escaping (_ output: Output) -> Void) -> Void) {
         self.maxRetries = maxRetries
         self.executionBlock = executionBlock
+        super.init()
     }
 
     override func start() {
@@ -56,7 +57,7 @@ class AsyncOperation: BaseOperation {
     }
 }
 
-class BaseOperation: Operation {
+class BaseOperation: Operation, @unchecked Sendable {
     private var _finished = false
     private var _executing = false
     private let stateQueue = DispatchQueue(label: "io.getstream.base-operation", attributes: .concurrent)

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -19,7 +19,7 @@ public extension ChatMessageLayoutOptionsResolver {
     var minTimeIntervalBetweenMessagesInGroup: TimeInterval {
         maxTimeIntervalBetweenMessagesInGroup
     }
-    
+
     @available(
         *,
         deprecated,
@@ -313,3 +313,5 @@ public extension CGSize {
     @available(*, deprecated, message: "use Components.avatarThumbnailSize instead.")
     static var avatarThumbnailSize: CGSize { CGSize(width: 40, height: 40) }
 }
+
+// swiftlint:enable all

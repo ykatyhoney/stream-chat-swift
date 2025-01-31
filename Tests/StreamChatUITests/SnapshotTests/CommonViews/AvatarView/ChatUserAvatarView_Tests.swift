@@ -1,10 +1,11 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
-import StreamChatTestTools
+@testable import StreamChatTestTools
 @testable import StreamChatUI
+import StreamSwiftTestHelpers
 import XCTest
 
 final class ChatUserAvatarView_Tests: XCTestCase {
@@ -36,6 +37,15 @@ final class ChatUserAvatarView_Tests: XCTestCase {
         AssertSnapshot(avatarViewOffline, variants: .onlyUserInterfaceStyles, suffix: "without online indicator")
     }
 
+    func test_appearance_whenOnlineIndicatorDisabled() {
+        let avatarViewOnline = ChatUserAvatarView().withoutAutoresizingMaskConstraints
+        avatarViewOnline.addSizeConstraints()
+        avatarViewOnline.components = .mock
+        avatarViewOnline.content = user
+        avatarViewOnline.shouldShowOnlineIndicator = false
+        AssertSnapshot(avatarViewOnline, variants: [.defaultLight])
+    }
+
     func test_appearanceCustomization_usingAppearanceAndComponents() {
         class RectIndicator: UIView, MaskProviding {
             override func didMoveToSuperview() {
@@ -43,7 +53,7 @@ final class ChatUserAvatarView_Tests: XCTestCase {
                 backgroundColor = .systemPink
                 widthAnchor.constraint(equalTo: heightAnchor, multiplier: 1).isActive = true
             }
-            
+
             var maskingPath: CGPath? {
                 UIBezierPath(rect: frame.insetBy(dx: -frame.width / 4, dy: -frame.height / 4)).cgPath
             }

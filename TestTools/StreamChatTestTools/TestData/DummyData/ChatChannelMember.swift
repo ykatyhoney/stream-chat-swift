@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -17,8 +17,10 @@ extension ChatChannelMember {
             userRole: .user,
             userCreatedAt: .unique,
             userUpdatedAt: .unique,
+            deactivatedAt: nil,
             lastActiveAt: .unique,
             teams: [],
+            language: nil,
             extraData: [:],
             memberRole: .member,
             memberCreatedAt: .unique,
@@ -26,9 +28,13 @@ extension ChatChannelMember {
             isInvited: true,
             inviteAcceptedAt: .unique,
             inviteRejectedAt: nil,
+            archivedAt: nil,
+            pinnedAt: nil,
             isBannedFromChannel: true,
             banExpiresAt: .unique,
-            isShadowBannedFromChannel: true
+            isShadowBannedFromChannel: true, 
+            notificationsMuted: false,
+            memberExtraData: [:]
         )
     }
 }

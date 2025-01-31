@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -12,11 +12,16 @@ public struct UploadedAttachment {
     /// The original file remote url.
     public let remoteURL: URL
 
+    /// A remote generated thumbnail url.
+    public let thumbnailURL: URL?
+
     public init(
         attachment: AnyChatMessageAttachment,
-        remoteURL: URL
+        remoteURL: URL,
+        thumbnailURL: URL? = nil
     ) {
         self.attachment = attachment
         self.remoteURL = remoteURL
+        self.thumbnailURL = thumbnailURL
     }
 }

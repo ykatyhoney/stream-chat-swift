@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -10,4 +10,6 @@ public struct MuteDetails: Equatable {
     public let createdAt: Date
     /// The time when the mute was updated.
     public let updatedAt: Date?
+    /// The expiration date of the pinning. Infinite expiration in case it is `nil`.
+    public let expiresAt: Date?
 }

@@ -1,17 +1,17 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
-import StreamChatTestHelpers
+import StreamChatTestTools
 import XCTest
 
 final class MulticastDelegate_Tests: XCTestCase {
     fileprivate var multicastDelegate: MulticastDelegate<TestDelegate>!
-    
+
     override func setUp() {
         super.setUp()
-        
+
         multicastDelegate = .init()
     }
 
@@ -32,7 +32,7 @@ final class MulticastDelegate_Tests: XCTestCase {
         multicastDelegate.invoke {
             $0.called = true
         }
-        
+
         XCTAssertTrue(testMainDelegate.called)
         XCTAssertTrue(testAdditionalDelegate.called)
     }
@@ -109,9 +109,9 @@ final class MulticastDelegate_Tests: XCTestCase {
 
         multicastDelegate.add(additionalDelegate: testDelegate1)
         multicastDelegate.add(additionalDelegate: testDelegate2)
-        
+
         XCTAssertEqual(multicastDelegate.additionalDelegates.count, 2)
-        
+
         multicastDelegate.remove(additionalDelegate: testDelegate1)
 
         XCTAssert(multicastDelegate.additionalDelegates.first === testDelegate2)
@@ -136,10 +136,21 @@ final class MulticastDelegate_Tests: XCTestCase {
             exp.fulfill()
         }
 
-        wait(for: [exp], timeout: 0.5)
+        wait(for: [exp], timeout: defaultTimeout)
 
         XCTAssertNil(multicastDelegate.mainDelegate)
         XCTAssertTrue(multicastDelegate.additionalDelegates.isEmpty)
+    }
+    
+    func test_whenAccessingConcurrently_shouldNotCrash() {
+        DispatchQueue.concurrentPerform(iterations: 1000) { _ in
+            let newMainDelegate = TestDelegate()
+            let newAdditionalDelegates = (0..<10).map { _ in TestDelegate() }
+            multicastDelegate.set(mainDelegate: newMainDelegate)
+            multicastDelegate.set(additionalDelegates: newAdditionalDelegates)
+            _ = multicastDelegate.mainDelegate
+            _ = multicastDelegate.additionalDelegates
+        }
     }
 }
 

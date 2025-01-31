@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -38,7 +38,7 @@ final class ChannelTruncateRequestPayload_Tests: XCTestCase {
                 "pinned": false,
                 "show_in_channel": false,
                 "silent": false
-            ]
+            ] as [String: Any]
         ])
     }
 

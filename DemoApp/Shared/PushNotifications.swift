@@ -1,8 +1,9 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
+import StreamChat
 import UIKit
 import UserNotifications
 
@@ -24,14 +25,14 @@ final class PushNotifications: NSObject {
 
     func registerForPushNotifications() {
         center.requestAuthorization(options: authorizationOptions) { [weak self] granted, _ in
-            print("Permission granted: \(granted)")
+            log.debug("Permission granted: \(granted)")
             self?.getNotificationSettings()
         }
     }
 
     private func getNotificationSettings() {
         center.getNotificationSettings { settings in
-            print("Notification settings: \(settings)")
+            log.debug("Notification settings: \(settings)")
             guard settings.authorizationStatus == .authorized else { return }
             DispatchQueue.main.async {
                 UIApplication.shared.registerForRemoteNotifications()

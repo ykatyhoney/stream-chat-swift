@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
@@ -9,7 +9,7 @@ public enum Message {
     public static func message(withInvalidCommand command: String) -> String {
         "Sorry, command \(command) doesn't exist. Try posting your message without the starting /"
     }
-    
+
     public static var blockedByModerationPolicies: String {
         "Message was blocked by moderation policies"
     }
@@ -25,17 +25,16 @@ public enum MockFile: String {
     case httpChannels = "http_channels"
     case httpAttachment = "http_attachment"
     case httpTruncate = "http_truncate"
-    
+
     case wsChatEvent = "ws_events"
     case wsChannelEvent = "ws_events_channel"
     case wsMemberEvent = "ws_events_member"
-    case wsUserEvent = "ws_events_user"
     case wsReaction = "ws_reaction"
     case wsHealthCheck = "ws_health_check"
-    
+
     case youtube = "http_youtube_link"
     case unsplash = "http_unsplash_link"
-    
+
     case pushNotification = "push_notification"
 
     var filePath: String {
@@ -53,18 +52,20 @@ public enum MockEndpoint {
     public static let channels = "/channels"
     public static let channel = "/channels/messaging/\(EndpointQuery.channelId)"
     public static let event = "/channels/messaging/\(EndpointQuery.channelId)/event"
-    public static let query = "/channels/messaging/\(EndpointQuery.channelId)/query"
+    public static let query = "/channels/\(EndpointQuery.channelType)/\(EndpointQuery.channelId)/query"
     public static let messageRead = "/channels/messaging/\(EndpointQuery.channelId)/read"
     public static let message = "/channels/messaging/\(EndpointQuery.channelId)/message"
     public static let image = "/channels/messaging/\(EndpointQuery.channelId)/image"
     public static let file = "/channels/messaging/\(EndpointQuery.channelId)/file"
     public static let truncate = "/channels/messaging/\(EndpointQuery.channelId)/truncate"
     public static let sync = "/sync"
+    public static let members = "/members"
 }
 
 public enum EndpointQuery {
     public static let messageId = ":message_id"
     public static let channelId = ":channel_id"
+    public static let channelType = ":channel_type"
     public static let reactionType = ":reaction_type"
 }
 
@@ -98,7 +99,7 @@ public enum JSONKey {
         public static let removeMembers = "remove_members"
         public static let truncatedBy = "truncated_by"
     }
-    
+
     public enum AttachmentAction {
         public static let send = "send"
         public static let shuffle = "shuffle"
@@ -142,14 +143,16 @@ public enum UserDetails {
         userKey.name.rawValue: hanSoloName,
         userKey.imageURL.rawValue: "https://vignette.wikia.nocookie.net/starwars/images/e/e2/TFAHanSolo.png"
     ]
-
+    
+    public static let lukeSkywalkerName = "Luke Skywalker"
     public static let lukeSkywalkerId = "luke_skywalker"
+    public static let lukeSkywalkerImageURL = "https://vignette.wikia.nocookie.net/starwars/images/2/20/LukeTLJ.jpg"
     public static let lukeSkywalker = [
         userKey.id.rawValue: lukeSkywalkerId,
-        userKey.name.rawValue: "Luke Skywalker",
-        userKey.imageURL.rawValue: "https://vignette.wikia.nocookie.net/starwars/images/2/20/LukeTLJ.jpg"
+        userKey.name.rawValue: lukeSkywalkerName,
+        userKey.imageURL.rawValue: lukeSkywalkerImageURL
     ]
-    
+
     public static let countDooku = [
         userKey.id.rawValue: "count_dooku",
         userKey.name.rawValue: "Count Dooku",

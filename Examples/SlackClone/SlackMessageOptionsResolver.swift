@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -50,7 +50,7 @@ final class SlackMessageOptionsResolver: ChatMessageLayoutOptionsResolver {
         let messageIndex = messages.index(messages.startIndex, offsetBy: indexPath.item)
         let message = messages[messageIndex]
 
-        if channel.ownCapabilities.contains(.sendReaction) && !message.reactionScores.isEmpty {
+        if channel.canSendReaction && !message.reactionScores.isEmpty {
             options.insert(.slackReactions)
         }
 

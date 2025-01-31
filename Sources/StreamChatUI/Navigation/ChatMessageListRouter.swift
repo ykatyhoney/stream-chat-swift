@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -17,7 +17,7 @@ open class ChatMessageListRouter:
     open private(set) lazy var messagePopUpTransitionController: ChatMessageActionsTransitionController = components
         .messageActionsTransitionController
         .init(messageListVC: rootViewController as? ChatMessageListVC)
-    
+
     /// Feedback generator used when presenting actions controller on selected message
     open var impactFeedbackGenerator = UIImpactFeedbackGenerator(style: .medium)
 
@@ -52,7 +52,7 @@ open class ChatMessageListRouter:
         popup.transitioningDelegate = messagePopUpTransitionController
 
         messagePopUpTransitionController.selectedMessageId = messageContentView.content?.id
-        
+
         rootViewController.present(popup, animated: true)
     }
 
@@ -70,7 +70,7 @@ open class ChatMessageListRouter:
         else {
             return
         }
-        
+
         let messageController = client.messageController(
             cid: cid,
             messageId: message.id
@@ -121,7 +121,7 @@ open class ChatMessageListRouter:
     open func showFilePreview(fileURL: URL?) {
         let preview = components.filePreviewVC.init()
         preview.content = fileURL
-        
+
         let navigation = UINavigationController(rootViewController: preview)
         rootViewController.present(navigation, animated: true)
     }
@@ -129,7 +129,7 @@ open class ChatMessageListRouter:
     /// Shows the detail View Controller of a message thread.
     ///
     /// - Parameters:
-    ///   - messageId: The id if the parent message of the thread.
+    ///   - messageId: The id of the parent message of the thread.
     ///   - cid: The `cid` of the channel the message belongs to.
     ///   - client: The current `ChatClient` instance.
     ///
@@ -140,6 +140,28 @@ open class ChatMessageListRouter:
         client: ChatClient
     ) {
         let threadVC = components.threadVC.init()
+        threadVC.channelController = client.channelController(for: cid)
+        threadVC.messageController = client.messageController(
+            cid: cid,
+            messageId: messageId
+        )
+        rootNavigationController?.show(threadVC, sender: self)
+    }
+
+    /// Shows the view controller with messages for the provided cid and jumps to the given message id.
+    /// - Parameters:
+    ///   - messageId: The id of the parent message of the thread.
+    ///   - replyId: The reply id to where the thread should jump to when opening the thread.
+    ///   - cid: The `ChannelId` of the channel the should be presented.
+    ///   - client: The current `ChatClient` instance.
+    open func showThread(
+        messageId: MessageId,
+        at replyId: MessageId?,
+        cid: ChannelId,
+        client: ChatClient
+    ) {
+        let threadVC = components.threadVC.init()
+        threadVC.initialReplyId = replyId
         threadVC.channelController = client.channelController(for: cid)
         threadVC.messageController = client.messageController(
             cid: cid,
@@ -164,7 +186,7 @@ open class ChatMessageListRouter:
         guard
             let preview = previews.first(where: { $0.attachmentId == initialAttachmentId })
         else { return }
-        
+
         let galleryVC = components.galleryVC.init()
         galleryVC.modalPresentationStyle = .overFullScreen
         galleryVC.transitioningDelegate = self
@@ -174,7 +196,7 @@ open class ChatMessageListRouter:
                 .firstIndex(of: initialAttachmentId) ?? 0
         )
         galleryVC.transitionController = zoomTransitionController
-        
+
         zoomTransitionController.presentedVCImageView = { [weak galleryVC] in
             galleryVC?.imageViewToAnimateWhenDismissing
         }
@@ -184,7 +206,7 @@ open class ChatMessageListRouter:
                 indexNotFoundAssertion()
                 return nil
             }
-            
+
             return previews.first(where: { $0.attachmentId == id })?.imageView ?? previews.last?.imageView
         }
         zoomTransitionController.fromImageView = preview.imageView
@@ -202,6 +224,44 @@ open class ChatMessageListRouter:
         )
     }
 
+    /// Shows the poll results view.
+    /// - Parameters:
+    ///   - poll: The poll to show the results.
+    ///   - messageId: The message ID which this poll belongs to.
+    ///   - client: The `ChatClient` instance.
+    open func showPollResults(for poll: Poll, in messageId: MessageId, client: ChatClient) {
+        let pollController = client.pollController(messageId: messageId, pollId: poll.id)
+        let pollResultsVC = components.pollResultsVC.init(pollController: pollController)
+        let navVC = UINavigationController(rootViewController: pollResultsVC)
+        rootViewController.present(navVC, animated: true)
+    }
+
+    /// Shows the poll comments view.
+    /// - Parameters:
+    ///   - poll: The poll to show the comments.
+    ///   - messageId: The message ID which this poll belongs to.
+    ///   - client: The `ChatClient` instance.
+    open func showPollComments(for poll: Poll, in messageId: MessageId, client: ChatClient) {
+        let pollController = client.pollController(messageId: messageId, pollId: poll.id)
+        let pollCommentListVC = components.pollCommentListVC.init(
+            pollController: pollController
+        )
+        let navVC = UINavigationController(rootViewController: pollCommentListVC)
+        rootViewController.present(navVC, animated: true)
+    }
+
+    /// Shows the poll all options view.
+    /// - Parameters:
+    ///   - poll: The poll that the options belong to.
+    ///   - messageId: The message ID which this poll belongs to.
+    ///   - client: The `ChatClient` instance.
+    open func showAllPollOptions(for poll: Poll, messageId: MessageId, client: ChatClient) {
+        let pollController = client.pollController(messageId: messageId, pollId: poll.id)
+        let pollAllOptionsVC = components.pollAllOptionsListVC.init(pollController: pollController)
+        let navVC = UINavigationController(rootViewController: pollAllOptionsVC)
+        rootViewController.present(navVC, animated: true)
+    }
+
     // MARK: - UIViewControllerTransitioningDelegate
 
     open func animationController(
@@ -215,11 +275,11 @@ open class ChatMessageListRouter:
             source: source
         )
     }
-    
+
     open func animationController(forDismissed dismissed: UIViewController) -> UIViewControllerAnimatedTransitioning? {
         zoomTransitionController.animationController(forDismissed: dismissed)
     }
-    
+
     open func interactionControllerForDismissal(using animator: UIViewControllerAnimatedTransitioning)
         -> UIViewControllerInteractiveTransitioning? {
         zoomTransitionController.interactionControllerForDismissal(using: animator)

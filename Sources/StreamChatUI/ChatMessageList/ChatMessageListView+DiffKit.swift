@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -32,29 +32,10 @@ extension ChatMessageListView {
 
 extension ChatMessage: Differentiable {
     public func isContentEqual(to source: ChatMessage) -> Bool {
-        id == source.id
-            && text == source.text
-            && type == source.type
-            && command == source.command
-            && arguments == source.arguments
-            && parentMessageId == source.parentMessageId
-            && showReplyInChannel == source.showReplyInChannel
-            && replyCount == source.replyCount
-            && extraData == source.extraData
-            && quotedMessage == source.quotedMessage
-            && isShadowed == source.isShadowed
-            && currentUserReactions.count == source.currentUserReactions.count
-            && reactionCounts == source.reactionCounts
-            && reactionScores == source.reactionScores
-            && threadParticipants.count == source.threadParticipants.count
-            && localState == source.localState
-            && isFlaggedByCurrentUser == source.isFlaggedByCurrentUser
-            && readBy.count == source.readBy.count
-            && giphyAttachments.map(\.previewURL) == source.giphyAttachments.map(\.previewURL)
-            && imageAttachments.map(\.uploadingState) == source.imageAttachments.map(\.uploadingState)
-            && videoAttachments.map(\.uploadingState) == source.videoAttachments.map(\.uploadingState)
-            && fileAttachments.map(\.uploadingState) == source.fileAttachments.map(\.uploadingState)
-            && audioAttachments.map(\.uploadingState) == source.audioAttachments.map(\.uploadingState)
-            && linkAttachments.map(\.uploadingState) == source.linkAttachments.map(\.uploadingState)
+        self == source
+    }
+    
+    public var differenceIdentifier: Int {
+        hashValue
     }
 }

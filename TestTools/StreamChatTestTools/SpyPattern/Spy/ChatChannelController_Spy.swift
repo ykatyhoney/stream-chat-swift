@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -7,13 +7,13 @@ import Foundation
 
 final class ChatChannelController_Spy: ChatChannelController, Spy {
     var watchActiveChannelError: Error?
-    var recordedFunctions: [String] = []
+    let spyState = SpyState()
 
     init(client: ChatClient_Mock) {
         super.init(channelQuery: .init(cid: .unique), channelListQuery: nil, client: client)
     }
 
-    override func recoverWatchedChannel(completion: @escaping (Error?) -> Void) {
+    override func recoverWatchedChannel(recovery: Bool, completion: @escaping (Error?) -> Void) {
         record()
         completion(watchActiveChannelError)
     }

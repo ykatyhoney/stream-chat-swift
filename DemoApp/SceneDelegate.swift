@@ -1,7 +1,8 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
+import StreamChat
 import UIKit
 
 extension UIColor {
@@ -18,7 +19,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     private let pushNotifications = PushNotifications()
-    
+
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene else { return }
 
@@ -58,16 +59,21 @@ extension SceneDelegate {
     func makeCoordinator(in window: UIWindow) {
         // Hook on registration for push notifications.
         // This closure is called once the chat user is connected.
-        chat.onRemotePushRegistration = { [weak self] in
+        StreamChatWrapper.onRemotePushRegistration = { [weak self] in
             self?.pushNotifications.registerForPushNotifications()
         }
 
         // Create coordinator for this demo app
         coordinator = DemoAppCoordinator(
             window: window,
-            chat: chat,
             pushNotifications: pushNotifications
         )
-        coordinator.start()
+        coordinator.start { error in
+            if let error = error {
+                log.error("Error starting app \(error)")
+            } else {
+                log.debug("Successfully started app")
+            }
+        }
     }
 }

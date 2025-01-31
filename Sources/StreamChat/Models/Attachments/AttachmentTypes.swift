@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -36,6 +36,16 @@ public enum LocalAttachmentState: Hashable {
     case uploaded
 }
 
+/// A local download state of the attachment.
+public enum LocalAttachmentDownloadState: Hashable {
+    /// The attachment is being downloaded.
+    case downloading(progress: Double)
+    /// The attachment download failed.
+    case downloadingFailed
+    /// The attachment has been downloaded.
+    case downloaded
+}
+
 /// An attachment action, e.g. send, shuffle.
 public struct AttachmentAction: Codable, Hashable {
     /// A name.
@@ -48,7 +58,7 @@ public struct AttachmentAction: Codable, Hashable {
     public let type: ActionType
     /// A text.
     public let text: String
-    
+
     /// Init an attachment action.
     /// - Parameters:
     ///   - name: a name.
@@ -72,7 +82,7 @@ public struct AttachmentAction: Codable, Hashable {
 
     /// Check if the action is cancel button.
     public var isCancel: Bool { value.lowercased() == "cancel" }
-    
+
     /// An attachment action type, e.g. button.
     public enum ActionType: String, Codable {
         case button
@@ -119,16 +129,13 @@ public struct AttachmentType: RawRepresentable, Codable, Hashable, ExpressibleBy
 }
 
 public extension AttachmentType {
-    /// Backend specified types.
     static let image = Self(rawValue: "image")
     static let file = Self(rawValue: "file")
     static let giphy = Self(rawValue: "giphy")
     static let video = Self(rawValue: "video")
     static let audio = Self(rawValue: "audio")
-
-    /// Application custom types.
+    static let voiceRecording = Self(rawValue: "voiceRecording")
     static let linkPreview = Self(rawValue: "linkPreview")
-    /// Is used when attachment with missing `type` comes.
     static let unknown = Self(rawValue: "unknown")
 }
 
@@ -138,7 +145,7 @@ public struct AttachmentFile: Codable, Hashable {
         case mimeType = "mime_type"
         case size = "file_size"
     }
-    
+
     /// An attachment file type (see `AttachmentFileType`).
     public let type: AttachmentFileType
     /// A size of the file.
@@ -170,25 +177,25 @@ public struct AttachmentFile: Codable, Hashable {
         }
 
         let fileType = AttachmentFileType(ext: url.pathExtension)
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
 
         self.init(
             type: fileType,
-            size: attributes[.size] as? Int64 ?? 0,
+            size: attributes?[.size] as? Int64 ?? 0,
             mimeType: fileType.mimeType
         )
     }
-    
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         mimeType = try? container.decodeIfPresent(String.self, forKey: .mimeType)
-        
+
         if let mimeType = mimeType {
             type = AttachmentFileType(mimeType: mimeType)
         } else {
             type = .generic
         }
-        
+
         if let size = try? container.decodeIfPresent(Int64.self, forKey: .size) {
             self.size = size
         } else if let floatSize = try? container.decodeIfPresent(Float64.self, forKey: .size) {
@@ -197,7 +204,7 @@ public struct AttachmentFile: Codable, Hashable {
             size = 0
         }
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(size, forKey: .size)
@@ -212,11 +219,13 @@ public enum AttachmentFileType: String, Codable, Equatable, CaseIterable {
     /// Text
     case csv, rtf, txt
     /// Audio
-    case mp3, mp4, wav, ogg, m4a
+    case mp3, wav, ogg, m4a, aac, mp4
     /// Video
     case mov, avi, wmv, webm
     /// Image
     case jpeg, png, gif, bmp, webp
+    /// Unknown
+    case unknown
 
     private static let mimeTypes: [String: AttachmentFileType] = [
         "application/octet-stream": .generic,
@@ -238,6 +247,7 @@ public enum AttachmentFileType: String, Codable, Equatable, CaseIterable {
         "text/plain": .txt,
         "audio/mp3": .mp3,
         "audio/mp4": .m4a,
+        "audio/aac": .aac,
         "audio/wav": .wav,
         "audio/ogg": .ogg,
         "video/mp4": .mp4,
@@ -252,14 +262,14 @@ public enum AttachmentFileType: String, Codable, Equatable, CaseIterable {
         "image/bmp": .bmp,
         "image/webp": .webp
     ]
-    
+
     /// Init an attachment file type by mime type.
     ///
     /// - Parameter mimeType: a mime type.
     public init(mimeType: String) {
         self = AttachmentFileType.mimeTypes[mimeType, default: .generic]
     }
-    
+
     /// Init an attachment file type by a file extension.
     ///
     /// - Parameter ext: a file extension.
@@ -281,7 +291,7 @@ public enum AttachmentFileType: String, Codable, Equatable, CaseIterable {
 
         self = AttachmentFileType(rawValue: ext) ?? .generic
     }
-    
+
     /// Returns a mime type for the file type.
     public var mimeType: String {
         if self == .jpeg {
@@ -292,10 +302,23 @@ public enum AttachmentFileType: String, Codable, Equatable, CaseIterable {
             .first(where: { $1 == self })?
             .key ?? "application/octet-stream"
     }
+
+    public var isAudio: Bool {
+        switch self {
+        case .mp3, .wav, .ogg, .m4a, .aac:
+            return true
+        default:
+            return false
+        }
+    }
+
+    public var isUnknown: Bool {
+        self == .unknown
+    }
 }
 
 extension ClientError {
-    class InvalidAttachmentFileURL: ClientError {
+    final class InvalidAttachmentFileURL: ClientError {
         init(_ url: URL) {
             super.init("The \(url) is invalid since it is not a file URL.")
         }

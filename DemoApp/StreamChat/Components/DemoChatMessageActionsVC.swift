@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -12,22 +12,23 @@ final class DemoChatMessageActionsVC: ChatMessageActionsVC {
     override var messageActions: [ChatMessageActionItem] {
         var actions = super.messageActions
         if message?.isSentByCurrentUser == true {
-            if message?.isBounced == false {
-                actions.append(pinMessageActionItem())
-            }
-            
             if AppConfig.shared.demoAppConfig.isHardDeleteEnabled {
                 actions.append(hardDeleteActionItem())
             }
         }
-        
+
         if message?.isBounced == false {
+            actions.append(pinMessageActionItem())
             actions.append(translateActionItem())
         }
-        
+
+        if AppConfig.shared.demoAppConfig.isMessageDebuggerEnabled {
+            actions.append(messageDebugActionItem())
+        }
+
         return actions
     }
-    
+
     func pinMessageActionItem() -> PinMessageActionItem {
         PinMessageActionItem(
             title: message?.isPinned == false ? "Pin to Conversation" : "Unpin from Conservation",
@@ -81,13 +82,23 @@ final class DemoChatMessageActionsVC: ChatMessageActionsVC {
             appearance: appearance
         )
     }
-    
+
+    func messageDebugActionItem() -> ChatMessageActionItem {
+        MessageDebugActionItem { [weak self] _ in
+            guard let message = self?.message else { return }
+            debugPrint("Debug message", message)
+
+            let vc = DebugObjectViewController(object: message)
+            self?.present(vc, animated: true)
+        }
+    }
+
     struct PinMessageActionItem: ChatMessageActionItem {
         var title: String
         var isDestructive: Bool { false }
         let icon: UIImage
         let action: (ChatMessageActionItem) -> Void
-        
+
         init(
             title: String,
             action: @escaping (ChatMessageActionItem) -> Void,
@@ -95,7 +106,7 @@ final class DemoChatMessageActionsVC: ChatMessageActionsVC {
         ) {
             self.title = title
             self.action = action
-            icon = UIImage(systemName: "pin")!
+            icon = UIImage(systemName: "pin") ?? .init()
         }
     }
 
@@ -127,5 +138,11 @@ final class DemoChatMessageActionsVC: ChatMessageActionsVC {
             self.action = action
             icon = UIImage(systemName: "flag")!
         }
+    }
+
+    struct MessageDebugActionItem: ChatMessageActionItem {
+        var title: String { "Message Info" }
+        var icon: UIImage { UIImage(systemName: "ladybug")! }
+        var action: (ChatMessageActionItem) -> Void
     }
 }

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -8,16 +8,19 @@ import Foundation
 extension MessageReactionPayload {
     static func dummy(
         type: MessageReactionType = .init(rawValue: .unique),
+        score: Int = .random(in: 0...10),
         messageId: String,
+        createdAt: Date = .unique,
+        updatedAt: Date = .unique,
         user: UserPayload,
         extraData: [String: RawJSON] = [:]
     ) -> MessageReactionPayload {
         .init(
             type: type,
-            score: .random(in: 0...10),
+            score: score,
             messageId: messageId,
-            createdAt: .unique,
-            updatedAt: .unique,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
             user: user,
             extraData: extraData
         )

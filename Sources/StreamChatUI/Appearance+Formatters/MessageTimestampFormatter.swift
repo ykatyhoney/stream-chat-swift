@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -13,9 +13,9 @@ public protocol MessageTimestampFormatter {
 open class DefaultMessageTimestampFormatter: MessageTimestampFormatter {
     public var dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
         formatter.dateStyle = .none
         formatter.timeStyle = .short
-        formatter.locale = .autoupdatingCurrent
         return formatter
     }()
 

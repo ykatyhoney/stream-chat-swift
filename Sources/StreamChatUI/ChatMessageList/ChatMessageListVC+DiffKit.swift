@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -12,7 +12,7 @@ extension ChatMessageListVC {
     }
 
     /// Set the new message snapshot reported by the data controller.
-    internal func setNewMessagesSnapshot(_ messages: [ChatMessage]) {
+    internal func setNewMessagesSnapshot(_ messages: LazyCachedMapCollection<ChatMessage>) {
         listView.currentMessagesFromDataSource = messages
         listView.newMessagesSnapshot = messages
     }

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import XCTest
@@ -17,6 +17,7 @@ final class MessageDeliveryStatus_Tests: StreamTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
         addTags([.messageDeliveryStatus])
+        assertMockServer()
     }
 
     // MARK: Message List
@@ -60,11 +61,10 @@ final class MessageDeliveryStatus_Tests: StreamTestCase {
 
         GIVEN("user becomes offline") {
             userRobot
-                .setConnectivitySwitchVisibility(to: .on)
                 .login()
                 .setConnectivity(to: .off)
                 .openChannel()
-                
+
         }
         WHEN("user sends a new message") {
             userRobot.sendMessage(failedMessage, waitForAppearance: false)
@@ -101,7 +101,7 @@ final class MessageDeliveryStatus_Tests: StreamTestCase {
         }
     }
 
-    func test_doubleCheckmarkShown_whenNewParticipantAdded() {
+    func test_noDoubleCheckmarkShown_whenNewParticipantAdded() {
         linkToScenario(withId: 143)
 
         GIVEN("user opens the channel") {
@@ -124,14 +124,14 @@ final class MessageDeliveryStatus_Tests: StreamTestCase {
         THEN("user spots double checkmark below the message") {
             userRobot.assertMessageDeliveryStatus(.read)
         }
-        AND("user see read count 2 below the message") {
-            userRobot.assertMessageReadCount(readBy: 2)
+        AND("user see read count 1 below the message") {
+            userRobot.assertMessageReadCount(readBy: 1)
         }
     }
 
     func test_readByDecremented_whenParticipantIsRemoved() {
         linkToScenario(withId: 145)
-    
+
         let participantOne = participantRobot.currentUserId
 
         GIVEN("user opens the channel") {
@@ -238,7 +238,6 @@ extension MessageDeliveryStatus_Tests {
 
         GIVEN("user becomes offline") {
             userRobot
-                .setConnectivitySwitchVisibility(to: .on)
                 .login()
                 .setConnectivity(to: .off)
                 .openChannel()
@@ -259,7 +258,9 @@ extension MessageDeliveryStatus_Tests {
         }
     }
 
-    func test_doubleCheckmarkShown_whenMessageReadByParticipant_andPreviewedInThread() {
+    func test_doubleCheckmarkShown_whenMessageReadByParticipant_andPreviewedInThread() throws {
+        throw XCTSkip("https://github.com/GetStream/ios-issues-tracking/issues/491")
+        
         linkToScenario(withId: 150)
 
         GIVEN("user opens the channel") {
@@ -267,7 +268,7 @@ extension MessageDeliveryStatus_Tests {
                 .login()
                 .openChannel()
         }
-        AND("user succesfully sends new message") {
+        AND("user successfully sends new message") {
             userRobot.sendMessage(message)
         }
         AND("user previews thread for read message: \(message)") {
@@ -313,7 +314,6 @@ extension MessageDeliveryStatus_Tests {
         GIVEN("user becomes offline") {
             backendRobot.generateChannels(count: 1, messagesCount: 1)
             userRobot
-                .setConnectivitySwitchVisibility(to: .on)
                 .login()
                 .setConnectivity(to: .off)
                 .openChannel()
@@ -346,7 +346,7 @@ extension MessageDeliveryStatus_Tests {
             userRobot.replyToMessageInThread(threadReply)
         }
         AND("participant reads the user's thread reply") {
-            participantRobot.readMessageAfterDelay()
+            participantRobot.readMessageInThreadAfterDelay()
         }
         THEN("user spots double checkmark below the message") {
             userRobot.assertMessageDeliveryStatus(.read)
@@ -356,9 +356,9 @@ extension MessageDeliveryStatus_Tests {
         }
     }
 
-    func test_doubleCheckmarkShownInThreadReply_whenNewParticipantAdded() {
+    func test_noDoubleCheckmarkShownInThreadReply_whenNewParticipantAdded() throws {
         linkToScenario(withId: 154)
-
+        
         GIVEN("user opens the channel") {
             userRobot
                 .login()
@@ -374,10 +374,10 @@ extension MessageDeliveryStatus_Tests {
             userRobot.addParticipant()
         }
         THEN("user spots double checkmark below the thread reply") {
-            userRobot.assertMessageDeliveryStatus(.read)
+            userRobot.assertMessageDeliveryStatus(.sent)
         }
         AND("user see read count 2 below the message") {
-            userRobot.assertMessageReadCount(readBy: 1)
+            userRobot.assertMessageReadCount(readBy: 0)
         }
     }
 
@@ -398,7 +398,7 @@ extension MessageDeliveryStatus_Tests {
             userRobot.replyToMessageInThread(threadReply)
         }
         AND("thread reply is read by participant") {
-            participantRobot.readMessageAfterDelay()
+            participantRobot.readMessageInThreadAfterDelay()
             userRobot
                 .assertMessageDeliveryStatus(.read)
                 .assertMessageReadCount(readBy: 1)
@@ -542,7 +542,6 @@ extension MessageDeliveryStatus_Tests {
         GIVEN("user becomes offline") {
             backendRobot.setReadEvents(to: false)
             userRobot
-                .setConnectivitySwitchVisibility(to: .on)
                 .login()
                 .setConnectivity(to: .off)
                 .openChannel()

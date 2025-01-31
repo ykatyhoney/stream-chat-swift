@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
@@ -21,13 +21,13 @@ public extension ChatClient {
 public class ChatChannelMemberController: DataController, DelegateCallable, DataStoreProvider {
     /// The identifier of the user this controller observes.
     public let userId: UserId
-    
+
     /// The identifier of the channel the user is member of.
     public let cid: ChannelId
-    
+
     /// The `ChatClient` instance this controller belongs to.
     public let client: ChatClient
-    
+
     /// The user the controller represents.
     ///
     /// To observe changes of the chat member, set your class as a delegate of this controller or use the provided
@@ -36,12 +36,11 @@ public class ChatChannelMemberController: DataController, DelegateCallable, Data
         startObservingIfNeeded()
         return memberObserver.item
     }
-    
+
     var _basePublishers: Any?
     /// An internal backing object for all publicly available Combine publishers. We use it to simplify the way we expose
     /// publishers. Instead of creating custom `Publisher` types, we use `CurrentValueSubject` and `PassthroughSubject` internally,
     /// and expose the published values by mapping them to a read-only `AnyPublisher` type.
-    @available(iOS 13, *)
     var basePublishers: BasePublishers {
         if let value = _basePublishers as? BasePublishers {
             return value
@@ -49,7 +48,7 @@ public class ChatChannelMemberController: DataController, DelegateCallable, Data
         _basePublishers = BasePublishers(controller: self)
         return _basePublishers as? BasePublishers ?? .init(controller: self)
     }
-    
+
     /// A type-erased delegate.
     var multicastDelegate: MulticastDelegate<ChatChannelMemberControllerDelegate> = .init() {
         didSet {
@@ -58,13 +57,13 @@ public class ChatChannelMemberController: DataController, DelegateCallable, Data
             startObservingIfNeeded()
         }
     }
-    
+
     /// The worker used to update channel members.
     private lazy var memberUpdater = createMemberUpdater()
-    
+
     /// The worker used to fetch channel members.
     private lazy var memberListUpdater = createMemberListUpdater()
-    
+
     /// The observer used to track the user changes in the database.
     private lazy var memberObserver = createMemberObserver()
         .onChange { [weak self] change in
@@ -77,7 +76,7 @@ public class ChatChannelMemberController: DataController, DelegateCallable, Data
                 $0.memberController(self, didUpdateMember: change)
             }
         }
-    
+
     private let environment: Environment
 
     /// Creates a new `ChatChannelMemberController`
@@ -97,49 +96,49 @@ public class ChatChannelMemberController: DataController, DelegateCallable, Data
         self.client = client
         self.environment = environment
     }
-    
+
     override public func synchronize(_ completion: ((_ error: Error?) -> Void)? = nil) {
         startObservingIfNeeded()
-        
+
         if case let .localDataFetchFailed(error) = state {
             callback { completion?(error) }
             return
         }
-        
-        memberListUpdater.load(.channelMember(userId: userId, cid: cid)) { error in
-            self.state = error == nil ? .remoteDataFetched : .remoteDataFetchFailed(ClientError(with: error))
-            self.callback { completion?(error) }
+
+        memberListUpdater.load(.channelMember(userId: userId, cid: cid)) { result in
+            self.state = result.error == nil ? .remoteDataFetched : .remoteDataFetchFailed(ClientError(with: result.error))
+            self.callback { completion?(result.error) }
         }
     }
-    
+
     // MARK: - Private
-    
+
     private func createMemberUpdater() -> ChannelMemberUpdater {
         environment.memberUpdaterBuilder(
             client.databaseContainer,
             client.apiClient
         )
     }
-    
+
     private func createMemberListUpdater() -> ChannelMemberListUpdater {
         environment.memberListUpdaterBuilder(
             client.databaseContainer,
             client.apiClient
         )
     }
-    
-    private func createMemberObserver() -> EntityDatabaseObserver<ChatChannelMember, MemberDTO> {
+
+    private func createMemberObserver() -> BackgroundEntityDatabaseObserver<ChatChannelMember, MemberDTO> {
         environment.memberObserverBuilder(
-            client.databaseContainer.viewContext,
+            client.databaseContainer,
             MemberDTO.member(userId, in: cid),
             { try $0.asModel() },
             NSFetchedResultsController<MemberDTO>.self
         )
     }
-    
+
     private func startObservingIfNeeded() {
         guard state == .initialized else { return }
-        
+
         do {
             try memberObserver.startObserving()
             state = .localDataFetched
@@ -153,9 +152,34 @@ public class ChatChannelMemberController: DataController, DelegateCallable, Data
 // MARK: - Actions
 
 public extension ChatChannelMemberController {
-    /// Bans the channel member for a specific # of minutes.
+    /// Updates the channel member with additional information.
+    ///
+    /// **Note:** The data is assigned to the member in this channel only, and not the user object
+    /// across multiple channels.
+    /// - Parameters:
+    ///   - extraData: The additional data to populate the member.
+    ///   - unsetProperties: Properties from the member to be cleared/unset.
+    func partialUpdate(
+        extraData: [String: RawJSON]?,
+        unsetProperties: [String]? = nil,
+        completion: ((Result<ChatChannelMember, Error>) -> Void)? = nil
+    ) {
+        memberUpdater.partialUpdate(
+            userId: userId,
+            in: cid,
+            updates: MemberUpdatePayload(extraData: extraData),
+            unset: unsetProperties
+        ) { result in
+            self.callback {
+                completion?(result)
+            }
+        }
+    }
+
+    /// Bans the channel member.
     /// - Parameters:
     ///   - timeoutInMinutes: The # of minutes the user should be banned for.
+    ///   By default it is `nil`, it will ban the member until it is unbanned.
     ///   - reason: The ban reason.
     ///   - completion: The completion. Will be called on a **callbackQueue** when the network request is finished.
     ///                 If request fails, the completion will be called with an error.
@@ -164,13 +188,44 @@ public extension ChatChannelMemberController {
         reason: String? = nil,
         completion: ((Error?) -> Void)? = nil
     ) {
-        memberUpdater.banMember(userId, in: cid, for: timeoutInMinutes, reason: reason) { error in
+        memberUpdater.banMember(
+            userId,
+            in: cid,
+            shadow: false,
+            for: timeoutInMinutes,
+            reason: reason
+        ) { error in
             self.callback {
                 completion?(error)
             }
         }
     }
-    
+
+    /// Shadow bans the channel member.
+    /// - Parameters:
+    ///   - timeoutInMinutes: The # of minutes the user should be banned for.
+    ///   By default it is `nil`, it will ban the member until it is unbanned.
+    ///   - reason: The ban reason.
+    ///   - completion: The completion. Will be called on a **callbackQueue** when the network request is finished.
+    ///                 If request fails, the completion will be called with an error.
+    func shadowBan(
+        for timeoutInMinutes: Int? = nil,
+        reason: String? = nil,
+        completion: ((Error?) -> Void)? = nil
+    ) {
+        memberUpdater.banMember(
+            userId,
+            in: cid,
+            shadow: true,
+            for: timeoutInMinutes,
+            reason: reason
+        ) { error in
+            self.callback {
+                completion?(error)
+            }
+        }
+    }
+
     /// Unbans the channel member.
     /// - Parameter completion: The completion. Will be called on a **callbackQueue** when the network request is finished.
     ///                         If request fails, the completion will be called with an error.
@@ -189,18 +244,18 @@ extension ChatChannelMemberController {
             _ database: DatabaseContainer,
             _ apiClient: APIClient
         ) -> ChannelMemberUpdater = ChannelMemberUpdater.init
-        
+
         var memberListUpdaterBuilder: (
             _ database: DatabaseContainer,
             _ apiClient: APIClient
         ) -> ChannelMemberListUpdater = ChannelMemberListUpdater.init
-        
+
         var memberObserverBuilder: (
-            _ context: NSManagedObjectContext,
+            _ databaseContainer: DatabaseContainer,
             _ fetchRequest: NSFetchRequest<MemberDTO>,
             _ itemCreator: @escaping (MemberDTO) throws -> ChatChannelMember,
             _ fetchedResultsControllerType: NSFetchedResultsController<MemberDTO>.Type
-        ) -> EntityDatabaseObserver<ChatChannelMember, MemberDTO> = EntityDatabaseObserver.init
+        ) -> BackgroundEntityDatabaseObserver<ChatChannelMember, MemberDTO> = BackgroundEntityDatabaseObserver.init
     }
 }
 

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
@@ -18,16 +18,20 @@ class UserDTO: NSManagedObject {
     @NSManaged var userCreatedAt: DBDate
     @NSManaged var userRoleRaw: String
     @NSManaged var userUpdatedAt: DBDate
-    
+    @NSManaged var userDeactivatedAt: DBDate?
+
     @NSManaged var flaggedBy: CurrentUserDTO?
 
     @NSManaged var members: Set<MemberDTO>?
+    @NSManaged var messages: Set<MessageDTO>?
     @NSManaged var currentUser: CurrentUserDTO?
     @NSManaged var teams: [TeamId]
+    @NSManaged var language: String?
 
     /// Returns a fetch request for the dto with the provided `userId`.
     static func user(withID userId: UserId) -> NSFetchRequest<UserDTO> {
         let request = NSFetchRequest<UserDTO>(entityName: UserDTO.entityName)
+        UserDTO.applyPrefetchingState(to: request)
         request.sortDescriptors = [NSSortDescriptor(keyPath: \UserDTO.id, ascending: false)]
         request.predicate = NSPredicate(format: "id == %@", userId)
         return request
@@ -36,28 +40,62 @@ class UserDTO: NSManagedObject {
     override func willSave() {
         super.willSave()
 
-        // When user changed, we need to propagate this change to members and current user
+        guard !isDeleted else {
+            return
+        }
+        
+        // We need to propagate fake changes to other models so that it triggers FRC
+        // updates for other entities. We also need to check that these models
+        // don't have changes already, otherwise it creates an infinite loop.
         if hasPersistentChangedValues {
             if let currentUser = currentUser, !currentUser.hasChanges {
-                // this will not change object, but mark it as dirty, triggering updates
-                let assigningPropertyToItself = currentUser.unreadChannelsCount
-                currentUser.unreadChannelsCount = assigningPropertyToItself
+                let fakeNewUnread = currentUser.unreadChannelsCount
+                currentUser.unreadChannelsCount = fakeNewUnread
             }
             for member in members ?? [] {
-                guard !member.hasChanges, !member.isDeleted else { continue }
-                // this will not change object, but mark it as dirty, triggering updates
-                let assigningPropertyToItself = member.channelRoleRaw
-                member.channelRoleRaw = assigningPropertyToItself
+                if !member.hasChanges && !member.isDeleted {
+                    let fakeNewChannelRole = member.channelRoleRaw
+                    member.channelRoleRaw = fakeNewChannelRole
+                }
+
+                if !member.channel.hasChanges && !member.channel.isDeleted {
+                    let fakeNewCid = member.channel.cid
+                    member.channel.cid = fakeNewCid
+                }
+            }
+
+            /// When a user updates, we want to trigger message updates, so that changes
+            /// are reflected in the UI and the message authors are updated.
+            /// It is important we only do this for name and images changes since this
+            /// will trigger an event for every message that this user owns.
+            let hasNameChanged = changedValues().keys.contains(#keyPath(UserDTO.name))
+            let hasImageUrlChanged = changedValues().keys.contains(#keyPath(UserDTO.imageURL))
+            if hasNameChanged || hasImageUrlChanged {
+                for message in messages ?? [] {
+                    if !message.hasChanges && !message.isDeleted {
+                        message.user = self
+                    }
+                }
             }
         }
     }
 }
 
+// MARK: - Reset Ephemeral Values
+
 extension UserDTO: EphemeralValuesContainer {
-    func resetEphemeralValues() {
-        isOnline = false
+    static func resetEphemeralRelationshipValues(in context: NSManagedObjectContext) {}
+    
+    static func resetEphemeralValuesBatchRequests() -> [NSBatchUpdateRequest] {
+        let request = NSBatchUpdateRequest(entityName: UserDTO.entityName)
+        request.propertiesToUpdate = [
+            KeyPath.string(\UserDTO.isOnline): false
+        ]
+        return [request]
     }
 }
+
+// MARK: - Load DTOs
 
 extension UserDTO {
     /// Fetches and returns `UserDTO` with the given id. Returns `nil` if the entity doesn't exist.
@@ -69,7 +107,7 @@ extension UserDTO {
     static func load(id: String, context: NSManagedObjectContext) -> UserDTO? {
         load(by: id, context: context).first
     }
-    
+
     /// If a User with the given id exists in the context, fetches and returns it. Otherwise creates a new
     /// `UserDTO` with the given id.
     ///
@@ -85,23 +123,12 @@ extension UserDTO {
         if let existing = load(id: id, context: context) {
             return existing
         }
-        
+
         let request = fetchRequest(id: id)
         let new = NSEntityDescription.insertNewObject(into: context, for: request)
         new.id = id
         new.teams = []
         return new
-    }
-    
-    static func loadLastActiveWatchers(cid: ChannelId, context: NSManagedObjectContext) -> [UserDTO] {
-        let request = NSFetchRequest<UserDTO>(entityName: UserDTO.entityName)
-        request.sortDescriptors = [
-            UserListSortingKey.lastActiveSortDescriptor,
-            UserListSortingKey.defaultSortDescriptor
-        ]
-        request.predicate = NSPredicate(format: "ANY watchedChannels.cid == %@", cid.rawValue)
-        request.fetchLimit = context.localCachingSettings?.chatChannel.lastActiveWatchersLimit ?? 100
-        return load(by: request, context: context)
     }
 }
 
@@ -109,7 +136,7 @@ extension NSManagedObjectContext: UserDatabaseSession {
     func user(id: UserId) -> UserDTO? {
         UserDTO.load(id: id, context: self)
     }
-    
+
     func saveUser(
         payload: UserPayload,
         query: UserListQuery?,
@@ -125,6 +152,8 @@ extension NSManagedObjectContext: UserDatabaseSession {
         dto.userCreatedAt = payload.createdAt.bridgeDate
         dto.userRoleRaw = payload.role.rawValue
         dto.userUpdatedAt = payload.updatedAt.bridgeDate
+        dto.userDeactivatedAt = payload.deactivatedAt?.bridgeDate
+        dto.language = payload.language
 
         do {
             dto.extraData = try JSONEncoder.default.encode(payload.extraData)
@@ -157,12 +186,12 @@ extension NSManagedObjectContext: UserDatabaseSession {
 extension UserDTO {
     /// Snapshots the current state of `UserDTO` and returns an immutable model object from it.
     func asModel() throws -> ChatUser { try .create(fromDTO: self) }
-    
+
     /// Snapshots the current state of `UserDTO` and returns its representation for used in API calls.
     func asRequestBody() -> UserRequestBody {
         let extraData: [String: RawJSON]
         do {
-            extraData = try JSONDecoder.default.decode([String: RawJSON].self, from: self.extraData)
+            extraData = try JSONDecoder.stream.decodeRawJSON(from: self.extraData)
         } catch {
             log.assertionFailure(
                 "Failed decoding saved extra data with error: \(error). This should never happen because"
@@ -177,28 +206,23 @@ extension UserDTO {
 extension UserDTO {
     static func userListFetchRequest(query: UserListQuery) -> NSFetchRequest<UserDTO> {
         let request = NSFetchRequest<UserDTO>(entityName: UserDTO.entityName)
-        
+        UserDTO.applyPrefetchingState(to: request)
+
         // Fetch results controller requires at least one sorting descriptor.
         let sortDescriptors = query.sort.compactMap { $0.key.sortDescriptor(isAscending: $0.isAscending) }
         request.sortDescriptors = sortDescriptors.isEmpty ? [UserListSortingKey.defaultSortDescriptor] : sortDescriptors
-        
+
         // If a filter exists, use is for the predicate. Otherwise, `nil` filter matches all users.
         if let filterHash = query.filter?.filterHash {
             request.predicate = NSPredicate(format: "ANY queries.filterHash == %@", filterHash)
         }
-        
+
         return request
     }
 
-    static var userWithoutQueryFetchRequest: NSFetchRequest<UserDTO> {
-        let request = NSFetchRequest<UserDTO>(entityName: UserDTO.entityName)
-        request.sortDescriptors = [UserListSortingKey.defaultSortDescriptor]
-        request.predicate = NSPredicate(format: "queries.@count == 0")
-        return request
-    }
-    
     static func watcherFetchRequest(cid: ChannelId) -> NSFetchRequest<UserDTO> {
         let request = NSFetchRequest<UserDTO>(entityName: UserDTO.entityName)
+        UserDTO.applyPrefetchingState(to: request)
         request.sortDescriptors = [UserListSortingKey.defaultSortDescriptor]
         request.predicate = NSPredicate(format: "ANY watchedChannels.cid == %@", cid.rawValue)
         return request
@@ -207,11 +231,11 @@ extension UserDTO {
 
 extension ChatUser {
     fileprivate static func create(fromDTO dto: UserDTO) throws -> ChatUser {
-        guard dto.isValid else { throw InvalidModel(dto) }
-
+        try dto.isNotDeleted()
+        
         let extraData: [String: RawJSON]
         do {
-            extraData = try JSONDecoder.default.decode([String: RawJSON].self, from: dto.extraData)
+            extraData = try JSONDecoder.stream.decodeRawJSON(from: dto.extraData)
         } catch {
             log.error(
                 "Failed to decode extra data for user with id: <\(dto.id)>, using default value instead. "
@@ -219,6 +243,8 @@ extension ChatUser {
             )
             extraData = [:]
         }
+
+        let language: TranslationLanguage? = dto.language.map(TranslationLanguage.init)
 
         return ChatUser(
             id: dto.id,
@@ -230,8 +256,10 @@ extension ChatUser {
             userRole: UserRole(rawValue: dto.userRoleRaw),
             createdAt: dto.userCreatedAt.bridgeDate,
             updatedAt: dto.userUpdatedAt.bridgeDate,
+            deactivatedAt: dto.userDeactivatedAt?.bridgeDate,
             lastActiveAt: dto.lastActivityAt?.bridgeDate,
             teams: Set(dto.teams),
+            language: language,
             extraData: extraData
         )
     }

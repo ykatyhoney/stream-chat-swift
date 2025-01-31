@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
@@ -8,22 +8,20 @@ import XCTest
 
 final class MessagePayload_Tests: XCTestCase {
     let messageJSON = XCTestCase.mockData(fromJSONFile: "Message")
-    let messageJSONWithCorruptedAttachments = XCTestCase.mockData(
-        fromFile: "MessageWithBrokenAttachments",
-        bundle: .testTools
-    )
+    let messageJSONWithCorruptedAttachments = XCTestCase.mockData(fromJSONFile: "MessageWithBrokenAttachments")
     let messageCustomData: [String: RawJSON] = ["secret_note": .string("Anakin is Vader!")]
 
     func test_messagePayload_isSerialized_withDefaultExtraData() throws {
         let box = try JSONDecoder.stream.decode(MessagePayload.Boxed.self, from: messageJSON)
         let payload = box.message
-        
+
         XCTAssertEqual(payload.id, "7baa1533-3294-4c0c-9a62-c9d0928bf733")
         XCTAssertEqual(payload.type.rawValue, "regular")
         XCTAssertEqual(payload.user.id, "broken-waterfall-5")
         XCTAssertEqual(payload.createdAt, "2020-07-16T15:39:03.010717Z".toDate())
         XCTAssertEqual(payload.updatedAt, "2020-08-17T13:15:39.895109Z".toDate())
         XCTAssertEqual(payload.deletedAt, "2020-07-16T15:55:03.010717Z".toDate())
+        XCTAssertEqual(payload.messageTextUpdatedAt, "2023-08-17T13:15:39.895109Z".toDate())
         XCTAssertEqual(payload.text, "No, I am your father!")
         XCTAssertEqual(payload.command, nil)
         XCTAssertEqual(payload.args, nil)
@@ -37,6 +35,14 @@ final class MessagePayload_Tests: XCTestCase {
         XCTAssertEqual(payload.ownReactions.count, 1)
         XCTAssertEqual(payload.reactionScores, ["love": 1])
         XCTAssertEqual(payload.reactionCounts, ["love": 1])
+        XCTAssertEqual(payload.reactionGroups, [
+            "love": MessageReactionGroupPayload(
+                sumScores: 1,
+                count: 1,
+                firstReactionAt: "2024-04-17T13:14:53.643826Z".toDate(),
+                lastReactionAt: "2024-04-17T13:15:53.643826Z".toDate()
+            )
+        ])
         XCTAssertEqual(payload.isSilent, true)
         XCTAssertEqual(payload.isShadowed, true)
         XCTAssertEqual(payload.channel?.cid.rawValue, "messaging:channel-ex7-63")
@@ -47,6 +53,16 @@ final class MessagePayload_Tests: XCTestCase {
         XCTAssertEqual(payload.pinnedBy?.id, "broken-waterfall-5")
         XCTAssertEqual(payload.quotedMessageId, "4C0CC2DA-8AB5-421F-808E-50DC7E40653D")
         XCTAssertEqual(payload.translations, [.italian: "si sono qui", .dutch: "ja ik ben hier"])
+        XCTAssertEqual(payload.originalLanguage, "it")
+        XCTAssertEqual(payload.moderationDetails?.action, "MESSAGE_RESPONSE_ACTION_BOUNCE")
+        XCTAssertEqual(payload.moderationDetails?.originalText, "click here to win a new iphone!!")
+        XCTAssertEqual(payload.moderation?.action, "bounce")
+        XCTAssertEqual(payload.moderation?.originalText, "The message original text")
+        XCTAssertEqual(payload.moderation?.textHarms, ["sexual_harrassment", "self_harm"])
+        XCTAssertEqual(payload.moderation?.imageHarms, ["nudity"])
+        XCTAssertEqual(payload.moderation?.blocklistMatched, "profanity_2021_01")
+        XCTAssertEqual(payload.moderation?.semanticFilterMatched, "bad_phrases")
+        XCTAssertEqual(payload.moderation?.platformCircumvented, false)
     }
 
     func test_messagePayload_isSerialized_withDefaultExtraData_withBrokenAttachmentPayload() throws {
@@ -86,11 +102,11 @@ final class MessagePayload_Tests: XCTestCase {
         XCTAssertEqual(payload.pinnedBy?.id, "broken-waterfall-5")
         XCTAssertEqual(payload.quotedMessageId, "4C0CC2DA-8AB5-421F-808E-50DC7E40653D")
     }
-    
+
     func test_messagePayload_isSerialized_withCustomExtraData() throws {
         let box = try JSONDecoder.default.decode(MessagePayload.Boxed.self, from: messageJSON)
         let payload = box.message
-        
+
         XCTAssertEqual(payload.id, "7baa1533-3294-4c0c-9a62-c9d0928bf733")
         XCTAssertEqual(payload.type.rawValue, "regular")
         XCTAssertEqual(payload.user.id, "broken-waterfall-5")
@@ -129,6 +145,7 @@ final class MessageRequestBody_Tests: XCTestCase {
             id: .unique,
             user: .dummy(userId: .unique),
             text: .unique,
+            type: nil,
             command: .unique,
             args: .unique,
             parentId: .unique,
@@ -140,7 +157,7 @@ final class MessageRequestBody_Tests: XCTestCase {
             pinExpires: "2021-05-15T06:43:08.776Z".toDate(),
             extraData: ["secret_note": .string("Anakin is Vader ;-)")]
         )
-        
+
         let serializedJSON = try JSONEncoder.stream.encode(payload)
         let expected: [String: Any] = [
             "id": payload.id,
@@ -159,13 +176,36 @@ final class MessageRequestBody_Tests: XCTestCase {
         let expectedJSON = try JSONSerialization.data(withJSONObject: expected, options: [])
         AssertJSONEqual(serializedJSON, expectedJSON)
     }
-    
+
+    func test_isSerialized_whenSystemMessage() throws {
+        let payload: MessageRequestBody = .init(
+            id: .unique,
+            user: .dummy(userId: .unique),
+            text: "Announcement: The Death Star will be operational in 2 weeks.",
+            type: MessageType.system.rawValue,
+            extraData: [:]
+        )
+
+        let serializedJSON = try JSONEncoder.stream.encode(payload)
+        let expected: [String: Any] = [
+            "id": payload.id,
+            "text": payload.text,
+            "type": "system",
+            "silent": false,
+            "pinned": false,
+            "show_in_channel": false
+        ]
+        let expectedJSON = try JSONSerialization.data(withJSONObject: expected, options: [])
+        AssertJSONEqual(serializedJSON, expectedJSON)
+    }
+
     /// Check whether the message body is serialized when `isSilent` is not provided in `init`
     func test_isSerializedWithoutSilent() throws {
         let payload: MessageRequestBody = .init(
             id: .unique,
             user: .dummy(userId: .unique),
             text: .unique,
+            type: nil,
             command: .unique,
             args: .unique,
             parentId: .unique,
@@ -176,7 +216,7 @@ final class MessageRequestBody_Tests: XCTestCase {
             pinExpires: "2021-05-15T06:43:08.776Z".toDate(),
             extraData: ["secret_note": .string("Anakin is Vader ;-)")]
         )
-        
+
         let serializedJSON = try JSONEncoder.stream.encode(payload)
         let expected: [String: Any] = [
             "id": payload.id,
@@ -193,7 +233,7 @@ final class MessageRequestBody_Tests: XCTestCase {
             "pin_expires": "2021-05-15T06:43:08.776Z"
         ]
         let expectedJSON = try JSONSerialization.data(withJSONObject: expected, options: [])
-        
+
         AssertJSONEqual(serializedJSON, expectedJSON)
     }
 }
@@ -202,7 +242,7 @@ final class MessageRepliesPayload_Tests: XCTestCase {
     func test_isSerialized() throws {
         let mockJSON = XCTestCase.mockData(fromJSONFile: "Messages")
         let payload = try JSONDecoder.default.decode(MessageRepliesPayload.self, from: mockJSON)
-        
+
         // Assert 2 messages successfully decoded.
         XCTAssertTrue(payload.messages.count == 2)
     }

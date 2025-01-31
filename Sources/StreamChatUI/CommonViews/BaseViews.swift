@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -66,6 +66,14 @@ public extension Customizable where Self: UIView {
     }
 }
 
+public extension Customizable where Self: UITableViewHeaderFooterView {
+    /// For table header footer view, when setting the content, the view does not have a super view.
+    /// So we call the updateContent() without checking the superview.
+    func updateContentIfNeeded() {
+        updateContent()
+    }
+}
+
 public extension Customizable where Self: UIViewController {
     /// If the view is already loaded it calls `updateContent()`, otherwise does nothing.
     func updateContentIfNeeded() {
@@ -110,11 +118,11 @@ extension AppearanceProvider where Self: _View {
 open class _View: UIView, Customizable, AccessibilityView {
     // Flag for preventing multiple lifecycle methods calls.
     fileprivate var isInitialized: Bool = false
-    
+
     override open func didMoveToSuperview() {
         super.didMoveToSuperview()
         guard !isInitialized, superview != nil else { return }
-        
+
         isInitialized = true
 
         setAccessibilityIdentifier()
@@ -123,7 +131,7 @@ open class _View: UIView, Customizable, AccessibilityView {
         setUpAppearance()
         updateContent()
     }
-    
+
     open func setUp() { /* default empty implementation */ }
     open func setUpAppearance() { setNeedsLayout() }
     open func setUpLayout() { setNeedsLayout() }
@@ -132,7 +140,6 @@ open class _View: UIView, Customizable, AccessibilityView {
     override open func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
 
-        guard #available(iOS 12, *) else { return }
         guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else { return }
 
         TraitCollectionReloadStack.push {
@@ -152,11 +159,11 @@ open class _View: UIView, Customizable, AccessibilityView {
 open class _CollectionViewCell: UICollectionViewCell, Customizable, AccessibilityView {
     // Flag for preventing multiple lifecycle methods calls.
     private var isInitialized: Bool = false
-    
+
     override open func didMoveToSuperview() {
         super.didMoveToSuperview()
         guard !isInitialized, superview != nil else { return }
-        
+
         isInitialized = true
 
         setAccessibilityIdentifier()
@@ -165,7 +172,7 @@ open class _CollectionViewCell: UICollectionViewCell, Customizable, Accessibilit
         setUpAppearance()
         updateContent()
     }
-    
+
     open func setUp() { /* default empty implementation */ }
     open func setUpAppearance() { setNeedsLayout() }
     open func setUpLayout() { setNeedsLayout() }
@@ -174,7 +181,6 @@ open class _CollectionViewCell: UICollectionViewCell, Customizable, Accessibilit
     override open func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
 
-        guard #available(iOS 12, *) else { return }
         guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else { return }
 
         TraitCollectionReloadStack.push {
@@ -216,7 +222,6 @@ open class _CollectionReusableView: UICollectionReusableView, Customizable, Acce
     override open func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
 
-        guard #available(iOS 12, *) else { return }
         guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else { return }
 
         TraitCollectionReloadStack.push {
@@ -236,11 +241,11 @@ open class _CollectionReusableView: UICollectionReusableView, Customizable, Acce
 open class _Control: UIControl, Customizable, AccessibilityView {
     // Flag for preventing multiple lifecycle methods calls.
     private var isInitialized: Bool = false
-    
+
     override open func didMoveToSuperview() {
         super.didMoveToSuperview()
         guard !isInitialized, superview != nil else { return }
-        
+
         isInitialized = true
 
         setAccessibilityIdentifier()
@@ -249,7 +254,7 @@ open class _Control: UIControl, Customizable, AccessibilityView {
         setUpAppearance()
         updateContent()
     }
-    
+
     open func setUp() { /* default empty implementation */ }
     open func setUpAppearance() { setNeedsLayout() }
     open func setUpLayout() { setNeedsLayout() }
@@ -258,7 +263,6 @@ open class _Control: UIControl, Customizable, AccessibilityView {
     override open func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
 
-        guard #available(iOS 12, *) else { return }
         guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else { return }
 
         TraitCollectionReloadStack.push {
@@ -278,11 +282,11 @@ open class _Control: UIControl, Customizable, AccessibilityView {
 open class _Button: UIButton, Customizable, AccessibilityView {
     // Flag for preventing multiple lifecycle methods calls.
     private var isInitialized: Bool = false
-    
+
     override open func didMoveToSuperview() {
         super.didMoveToSuperview()
         guard !isInitialized, superview != nil else { return }
-        
+
         isInitialized = true
 
         setAccessibilityIdentifier()
@@ -291,7 +295,7 @@ open class _Button: UIButton, Customizable, AccessibilityView {
         setUpAppearance()
         updateContent()
     }
-    
+
     open func setUp() { /* default empty implementation */ }
     open func setUpAppearance() { setNeedsLayout() }
     open func setUpLayout() { setNeedsLayout() }
@@ -300,7 +304,6 @@ open class _Button: UIButton, Customizable, AccessibilityView {
     override open func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
 
-        guard #available(iOS 12, *) else { return }
         guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else { return }
 
         TraitCollectionReloadStack.push {
@@ -320,11 +323,11 @@ open class _Button: UIButton, Customizable, AccessibilityView {
 open class _NavigationBar: UINavigationBar, Customizable, AccessibilityView {
     // Flag for preventing multiple lifecycle methods calls.
     private var isInitialized: Bool = false
-    
+
     override open func didMoveToSuperview() {
         super.didMoveToSuperview()
         guard !isInitialized, superview != nil else { return }
-        
+
         isInitialized = true
 
         setAccessibilityIdentifier()
@@ -333,7 +336,7 @@ open class _NavigationBar: UINavigationBar, Customizable, AccessibilityView {
         setUpAppearance()
         updateContent()
     }
-    
+
     open func setUp() { /* default empty implementation */ }
     open func setUpAppearance() { setNeedsLayout() }
     open func setUpLayout() { setNeedsLayout() }
@@ -342,7 +345,6 @@ open class _NavigationBar: UINavigationBar, Customizable, AccessibilityView {
     override open func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
 
-        guard #available(iOS 12, *) else { return }
         guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else { return }
 
         TraitCollectionReloadStack.push {
@@ -365,24 +367,24 @@ open class _ViewController: UIViewController, Customizable {
         // To prevent responder chain from being cutoff during `ViewController` lifecycle we fallback to parent.
         super.next ?? parent
     }
-    
+
     override open func viewDidLoad() {
         super.viewDidLoad()
-        
+
         setUp()
         setUpLayout()
         setUpAppearance()
         updateContent()
     }
-    
+
     /**
      A function that will be called on first launch of the `View` it's a function that can be used
      for any initial setup work required by the `View` such as setting delegates or data sources
-     
+
      `setUp()` is an important function within the ViewController lifecycle
      Its responsibility is to set the delegates and also call `synchronize()`
      this will make sure your local & remote data is in sync.
-     
+
      - Important: If you override this method without calling `super.setUp()`, it's essential
      to make sure `synchronize()` is called.
      */
@@ -394,7 +396,6 @@ open class _ViewController: UIViewController, Customizable {
     override open func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
 
-        guard #available(iOS 12, *) else { return }
         guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else { return }
 
         TraitCollectionReloadStack.push {
@@ -406,6 +407,23 @@ open class _ViewController: UIViewController, Customizable {
     override open func viewWillLayoutSubviews() {
         TraitCollectionReloadStack.executePendingUpdates()
         super.viewWillLayoutSubviews()
+    }
+
+    var viewVisibilityChecker: ViewVisibilityChecker = DefaultViewVisibilityChecker()
+
+    var isViewVisible: Bool {
+        viewVisibilityChecker.isViewVisible(for: self)
+    }
+}
+
+protocol ViewVisibilityChecker {
+    func isViewVisible(for viewController: UIViewController) -> Bool
+}
+
+struct DefaultViewVisibilityChecker: ViewVisibilityChecker {
+    func isViewVisible(for viewController: UIViewController) -> Bool {
+        guard UIApplication.shared.applicationState == .active else { return false }
+        return viewController.viewIfLoaded?.window != nil
     }
 }
 
@@ -452,7 +470,46 @@ open class _TableViewCell: UITableViewCell, Customizable, AccessibilityView {
     override open func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
 
-        guard #available(iOS 12, *) else { return }
+        guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else { return }
+
+        TraitCollectionReloadStack.push {
+            self.setUpAppearance()
+            self.updateContent()
+        }
+    }
+
+    override open func layoutSubviews() {
+        TraitCollectionReloadStack.executePendingUpdates()
+        super.layoutSubviews()
+    }
+}
+
+/// Base class for overridable views StreamChatUI provides.
+/// All conformers will have StreamChatUI appearance settings by default.
+open class _TableHeaderFooterView: UITableViewHeaderFooterView, Customizable, AccessibilityView {
+    override public init(reuseIdentifier: String?) {
+        super.init(reuseIdentifier: reuseIdentifier)
+
+        setAccessibilityIdentifier()
+        setUp()
+        setUpLayout()
+        setUpAppearance()
+        updateContent()
+    }
+
+    @available(*, unavailable)
+    public required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    open func setUp() { /* default empty implementation */ }
+    open func setUpAppearance() { /* default empty implementation */ }
+    open func setUpLayout() { /* default empty implementation */ }
+    open func updateContent() { /* default empty implementation */ }
+
+    override open func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+
         guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else { return }
 
         TraitCollectionReloadStack.push {

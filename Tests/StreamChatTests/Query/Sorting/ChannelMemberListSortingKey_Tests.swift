@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -11,8 +11,8 @@ final class ChannelMemberListSortingKey_Tests: XCTestCase {
     func test_sortDescriptor_keyPaths_areValid() throws {
         // Put all `ChannelMemberListSortingKey`s in an array
         // We don't use `CaseIterable` since we only need this for tests
-        let sortingKeys: [ChannelMemberListSortingKey] = [.createdAt, .name]
-        
+        let sortingKeys: [ChannelMemberListSortingKey] = [.createdAt, .name, .channelRole, .userId]
+
         // Iterate over keys...
         for key in sortingKeys {
             switch key {
@@ -24,6 +24,10 @@ final class ChannelMemberListSortingKey_Tests: XCTestCase {
                     ChannelMemberListSortingKey.name.rawValue,
                     NSExpression(forKeyPath: \MemberDTO.user.name).keyPath
                 )
+            case .channelRole:
+                XCTAssertEqual(key.rawValue, KeyPath.string(\MemberDTO.channelRoleRaw))
+            case .userId:
+                XCTAssertEqual(key.rawValue, NSExpression(forKeyPath: \MemberDTO.user.id).keyPath)
             }
         }
     }

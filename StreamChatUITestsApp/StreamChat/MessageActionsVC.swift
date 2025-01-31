@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -13,7 +13,7 @@ final class MessageActionsVC: ChatMessageActionsVC {
         if message?.isSentByCurrentUser == true {
             actions.append(hardDeleteActionItem())
         }
-        
+
         return actions
     }
 

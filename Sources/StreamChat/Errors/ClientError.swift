@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -10,34 +10,38 @@ public class ClientError: Error, CustomStringConvertible {
         public let file: String
         public let line: Int
     }
-    
+
     /// The file and line number which emitted the error.
     public let location: Location?
-    
-    private var message: String?
-    
+
+    public let message: String?
+
     /// An underlying error.
     public let underlyingError: Error?
-    
-    var errorDescription: String? { underlyingError.map(String.init(describing:)) }
-    
+
+    public var errorDescription: String? { underlyingError.map(String.init(describing:)) }
+
+    /// The error payload if the underlying error comes from a server error.
+    public var errorPayload: ErrorPayload? { underlyingError as? ErrorPayload }
+
     /// Retrieve the localized description for this error.
     public var localizedDescription: String { message ?? errorDescription ?? "" }
-    
+
     public private(set) lazy var description = "Error \(type(of: self)) in \(location?.file ?? ""):\(location?.line ?? 0)"
         + (localizedDescription.isEmpty ? "" : " -> ")
         + localizedDescription
-    
+
     /// A client error based on an external general error.
     /// - Parameters:
     ///   - error: an external error.
     ///   - file: a file name source of an error.
     ///   - line: a line source of an error.
     public init(with error: Error? = nil, _ file: StaticString = #file, _ line: UInt = #line) {
+        message = nil
         underlyingError = error
         location = .init(file: "\(file)", line: Int(line))
     }
-    
+
     /// An error based on a message.
     /// - Parameters:
     ///   - message: an error message.
@@ -52,10 +56,10 @@ public class ClientError: Error, CustomStringConvertible {
 
 extension ClientError {
     /// An unexpected error.
-    public class Unexpected: ClientError {}
-    
+    public final class Unexpected: ClientError {}
+
     /// An unknown error.
-    public class Unknown: ClientError {}
+    public final class Unknown: ClientError {}
 }
 
 // This should probably live only in the test target since it's not "true" equatable
@@ -76,9 +80,5 @@ extension ClientError {
     /// Returns `true` if underlaying error is `ErrorPayload` with code is inside invalid token codes range.
     var isInvalidTokenError: Bool {
         (underlyingError as? ErrorPayload)?.isInvalidTokenError == true
-    }
-    
-    var isBouncedMessageError: Bool {
-        (underlyingError as? ErrorPayload)?.isBouncedMessageError == true
     }
 }

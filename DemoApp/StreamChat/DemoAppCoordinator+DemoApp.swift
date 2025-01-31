@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -9,32 +9,62 @@ import UIKit
 // MARK: - Navigation
 
 extension DemoAppCoordinator {
-    func start(cid: ChannelId? = nil) {
+    var chat: StreamChatWrapper {
+        StreamChatWrapper.shared
+    }
+
+    func start(cid: ChannelId? = nil, completion: @escaping (Error?) -> Void) {
         if let user = UserDefaults.shared.currentUser {
-            showChat(for: .credentials(user), cid: cid, animated: false)
+            showChat(for: .credentials(user), cid: cid, animated: false, completion: completion)
         } else {
             showLogin(animated: false)
         }
     }
-    
-    func showChat(for user: DemoUserType, cid: ChannelId?, animated: Bool) {
-        logIn(as: user)
-        
-        let chatVC = makeChatVC(for: user, startOn: cid) { [weak self] in
-            guard let self = self else { return }
-            
-            self.logOut()
+
+    func showChat(for user: DemoUserType, cid: ChannelId?, animated: Bool, completion: @escaping (Error?) -> Void) {
+        logIn(as: user, completion: completion)
+
+        let chatVC = makeChatVC(
+            for: user,
+            startOn: cid,
+            onLogout: { [weak self] in
+                self?.logOut()
+            },
+            onDisconnect: { [weak self] in
+                self?.disconnect()
+            }
+        )
+
+        let client = StreamChatWrapper.shared.client!
+        let threadListQuery = ThreadListQuery(watch: true)
+        let threadListVC = DemoChatThreadListVC(
+            threadListController: client.threadListController(query: threadListQuery),
+            eventsController: client.eventsController()
+        )
+        threadListVC.onLogout = { [weak self] in
+            self?.logOut()
         }
-        
-        set(rootViewController: chatVC, animated: animated)
+        threadListVC.onDisconnect = { [weak self] in
+            self?.disconnect()
+        }
+        let tabBarViewController = DemoAppTabBarController(
+            channelListVC: chatVC,
+            threadListVC: UINavigationController(rootViewController: threadListVC),
+            currentUserController: StreamChatWrapper.shared.client!.currentUserController()
+        )
+        set(rootViewController: tabBarViewController, animated: animated)
         DemoAppConfiguration.showPerformanceTracker()
     }
-    
+
     func showLogin(animated: Bool) {
         let loginVC = makeLoginVC { [weak self] user in
-            self?.showChat(for: user, cid: nil, animated: true)
+            self?.showChat(for: user, cid: nil, animated: true) { error in
+                if let error = error {
+                    log.error("Something went wrong logging in: \(error)")
+                }
+            }
         }
-        
+
         if let loginVC = loginVC {
             set(rootViewController: loginVC, animated: animated)
         }
@@ -51,18 +81,41 @@ extension DemoAppCoordinator {
             loginVC.onUserSelection = onUserSelection
             return loginNVC
         }
-        
+
         return nil
     }
-    
-    func makeChatVC(for user: DemoUserType, startOn cid: ChannelId?, onLogout: @escaping () -> Void) -> UIViewController {
+
+    func makeChatVC(
+        for user: DemoUserType,
+        startOn cid: ChannelId?,
+        onLogout: @escaping () -> Void,
+        onDisconnect: @escaping () -> Void
+    ) -> UIViewController {
         // Construct channel list query
+        let sorting: [Sorting<ChannelListSortingKey>] = [
+            Sorting(key: .pinnedAt),
+            Sorting(key: .default)
+        ]
         let channelListQuery: ChannelListQuery
         switch user {
         case let .credentials(userCredentials):
-            channelListQuery = .init(filter: .containMembers(userIds: [userCredentials.id]))
+            channelListQuery = .init(
+                filter: .containMembers(userIds: [userCredentials.id]),
+                sort: sorting
+            )
+        case let .custom(userCredentials):
+            guard let userId = userCredentials?.id else {
+                fallthrough
+            }
+            channelListQuery = .init(
+                filter: .containMembers(userIds: [userId]),
+                sort: sorting
+            )
         case .anonymous, .guest:
-            channelListQuery = .init(filter: .equal(.type, to: .messaging))
+            channelListQuery = .init(
+                filter: .equal(.type, to: .messaging),
+                sort: sorting
+            )
         }
 
         let tuple = makeChannelVCs(for: cid)
@@ -73,7 +126,8 @@ extension DemoAppCoordinator {
         let channelListVC = makeChannelListVC(
             controller: channelListController,
             selectedChannel: selectedChannel,
-            onLogout: onLogout
+            onLogout: onLogout,
+            onDisconnect: onDisconnect
         )
 
         let channelListNVC = UINavigationController(rootViewController: channelListVC)
@@ -88,19 +142,21 @@ extension DemoAppCoordinator {
         }
         return channelListNVC
     }
-    
+
     func makeChannelListVC(
         controller: ChatChannelListController,
         selectedChannel: ChatChannel?,
-        onLogout: @escaping () -> Void
+        onLogout: @escaping () -> Void,
+        onDisconnect: @escaping () -> Void
     ) -> UIViewController {
         let channelListVC = DemoChatChannelListVC.make(with: controller)
         channelListVC.demoRouter?.onLogout = onLogout
+        channelListVC.demoRouter?.onDisconnect = onDisconnect
         channelListVC.selectedChannel = selectedChannel
         channelListVC.components.isChatChannelListStatesEnabled = true
         return channelListVC
     }
-    
+
     func makeChannelVC(controller: ChatChannelController) -> UIViewController {
         let channelVC = DemoChatChannelVC()
         channelVC.channelController = controller
@@ -127,32 +183,40 @@ extension DemoAppCoordinator {
 // MARK: - User Auth
 
 private extension DemoAppCoordinator {
-    func logIn(as user: DemoUserType) {
+    func logIn(as user: DemoUserType, completion: @escaping (Error?) -> Void) {
         // Store current user id
         UserDefaults.shared.currentUserId = user.staticUserId
 
         // App configuration used by our dev team
         DemoAppConfiguration.setInternalConfiguration()
 
-        chat.logIn(as: user)
+        if let userCredentials = user.userCredentials, let customApiKey = userCredentials.customApiKey {
+            StreamChatWrapper.replaceSharedInstance(apiKeyString: customApiKey)
+        }
+
+        chat.logIn(as: user, completion: completion)
     }
-    
+
     func logOut() {
-        // logout client
-        chat.logOut()
+        chat.logOut { [weak self] in
+            UserDefaults.shared.currentUserId = nil
+            self?.showLogin(animated: true)
+        }
+    }
 
-        // clean user id
-        UserDefaults.shared.currentUserId = nil
-
-        // show login screen
-        showLogin(animated: true)
+    func disconnect() {
+        chat.client?.disconnect { [weak self] in
+            DispatchQueue.main.async {
+                self?.showLogin(animated: true)
+            }
+        }
     }
 }
 
 private extension DemoUserType {
     var staticUserId: UserId? {
         guard case let .credentials(user) = self else { return nil }
-        
+
         return user.id
     }
 }

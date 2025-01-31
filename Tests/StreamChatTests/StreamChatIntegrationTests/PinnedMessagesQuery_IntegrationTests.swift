@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -29,12 +29,12 @@ final class PinnedMessagesQuery_IntegrationTests: XCTestCase {
 
         // Create token provider
         let tokenProvider = ConnectionDetailsProviderDelegate_Spy()
-        tokenProvider.token = .unique(userId: .unique)
+        tokenProvider.provideTokenResult = .success(.unique(userId: .unique))
 
         // Create request encoder.
         let baseURL = BaseURL.dublin.restAPIBaseURL
         let apiKey = String.unique
-        var requestEncoder = DefaultRequestEncoder(
+        let requestEncoder = DefaultRequestEncoder(
             baseURL: baseURL,
             apiKey: .init(apiKey)
         )
@@ -68,7 +68,7 @@ final class PinnedMessagesQuery_IntegrationTests: XCTestCase {
                 [
                     "direction": 1,
                     "field": "pinned_at"
-                ]
+                ] as [String: Any]
             ] as NSArray
         ])
     }

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -23,30 +23,24 @@ public extension Appearance {
                 return UIImage.circleImage
             }
         }
-        
+
+        private static func loadSafely(systemName: String, assetsFallback: String) -> UIImage {
+            UIImage(systemName: systemName) ?? loadImageSafely(with: assetsFallback)
+        }
+
         // MARK: - General
 
         public var loadingIndicator: UIImage = loadImageSafely(with: "loading_indicator")
-        public var close: UIImage = {
-            if #available(iOS 13.0, *) {
-                return UIImage(systemName: "xmark")!
-            } else {
-                return loadImageSafely(with: "close")
-            }
-        }()
+        public var close: UIImage = loadSafely(systemName: "xmark", assetsFallback: "close")
+        public var discard: UIImage = loadImageSafely(with: "close")
+        public var link: UIImage = loadImageSafely(with: "link")
 
         public var closeCircleTransparent: UIImage = loadImageSafely(with: "close_circle_transparent")
         public var discardAttachment: UIImage = loadImageSafely(with: "close_circle_filled")
         public var back: UIImage = loadImageSafely(with: "icn_back")
         public var onlyVisibleToCurrentUser = loadImageSafely(with: "eye")
         public var more = loadImageSafely(with: "icn_more")
-        public var share: UIImage = {
-            if #available(iOS 13.0, *) {
-                return UIImage(systemName: "square.and.arrow.up")!
-            } else {
-                return loadImageSafely(with: "share")
-            }
-        }()
+        public var share: UIImage = loadSafely(systemName: "square.and.arrow.up", assetsFallback: "share")
 
         public var commands: UIImage = loadImageSafely(with: "bolt")
         public var smallBolt: UIImage = loadImageSafely(with: "bolt_small")
@@ -60,21 +54,46 @@ public extension Appearance {
         public var folder: UIImage = loadImageSafely(with: "folder")
         public var restart: UIImage = loadImageSafely(with: "restart")
         public var emptyChannelListMessageBubble: UIImage = loadImageSafely(with: "empty_channel_list_message_bubble")
-        public var download: UIImage = {
-            if #available(iOS 13.0, *) {
-                return UIImage(systemName: "icloud.and.arrow.down")!
-            } else {
-                return loadImageSafely(with: "download")
-            }
-        }()
+        public var emptySearch: UIImage = loadImageSafely(with: "empty_search")
+        public var download: UIImage = loadSafely(systemName: "icloud.and.arrow.down", assetsFallback: "download")
+
+        // MARK: - Recording
+
+        public var mic: UIImage = loadSafely(systemName: "mic", assetsFallback: "mic")
+        public var lock: UIImage = loadSafely(systemName: "lock", assetsFallback: "lock")
+        public var chevronLeft: UIImage = loadSafely(systemName: "chevron.left", assetsFallback: "chevron.left")
+        public var chevronUp: UIImage = loadSafely(systemName: "chevron.up", assetsFallback: "chevron.up")
+        public var trash: UIImage = loadSafely(systemName: "trash", assetsFallback: "trash")
+        public var stop: UIImage = loadSafely(systemName: "stop.circle", assetsFallback: "")
+        public var playFill: UIImage = loadSafely(systemName: "play.fill", assetsFallback: "play.fill")
+        public var pauseFill: UIImage = loadSafely(systemName: "pause.fill", assetsFallback: "pause.fill")
+        public var recordingPlay: UIImage = loadSafely(systemName: "play", assetsFallback: "play_big")
+        public var recordingPause: UIImage = loadSafely(systemName: "pause", assetsFallback: "pause.fill")
+        public var rateButtonPillBackground: UIImage = loadImageSafely(with: "pill")
+        public var sliderThumb: UIImage = loadImageSafely(with: "sliderThumb")
 
         // MARK: - Message Receipts
-        
+
         public var messageDeliveryStatusSending: UIImage = loadImageSafely(with: "message_receipt_sending")
         public var messageDeliveryStatusSent: UIImage = loadImageSafely(with: "message_receipt_sent")
         public var messageDeliveryStatusRead: UIImage = loadImageSafely(with: "message_receipt_read")
         public var messageDeliveryStatusFailed: UIImage = loadImageSafely(with: "message_receipt_failed")
-        
+
+        // MARK: - Polls
+
+        public var pollReorderIcon: UIImage = loadSafely(systemName: "line.3.horizontal", assetsFallback: "line.3.horizontal")
+        public var pollCreationSendIcon: UIImage = loadSafely(systemName: "paperplane.fill", assetsFallback: "paperplane.fill")
+        public var pollWinner: UIImage = loadSafely(systemName: "trophy", assetsFallback: "trophy")
+        public var pollVoteCheckmarkActive: UIImage = .checkmark
+        public var pollVoteCheckmarkInactive: UIImage = UIImage(
+            systemName: "circle",
+            withConfiguration: UIImage.SymbolConfiguration(weight: .thin)
+        ) ?? loadSafely(systemName: "circle", assetsFallback: "checkmark_confirm")
+
+        // MARK: - Threads
+
+        public var threadIcon: UIImage = loadSafely(systemName: "text.bubble", assetsFallback: "text_bubble")
+
         // MARK: - Reactions
 
         public var reactionLoveSmall: UIImage = loadImageSafely(with: "reaction_love_small")
@@ -125,6 +144,7 @@ public extension Appearance {
         // MARK: - FileIcons
 
         public var file7z: UIImage = loadImageSafely(with: "7z")
+        public var fileAac: UIImage = loadImageSafely(with: "aac")
         public var fileCsv: UIImage = loadImageSafely(with: "csv")
         public var fileDoc: UIImage = loadImageSafely(with: "doc")
         public var fileDocx: UIImage = loadImageSafely(with: "docx")
@@ -150,6 +170,7 @@ public extension Appearance {
             get { _documentPreviews ??
                 [
                     "7z": file7z,
+                    "aac": fileAac,
                     "csv": fileCsv,
                     "doc": fileDoc,
                     "docx": fileDocx,
@@ -187,8 +208,11 @@ public extension Appearance {
 
         // MARK: - Message Actions
 
+        public var messageActionSwipeReply: UIImage = loadImageSafely(with: "icn_inline_reply")
         public var messageActionInlineReply: UIImage = loadImageSafely(with: "icn_inline_reply")
         public var messageActionThreadReply: UIImage = loadImageSafely(with: "icn_thread_reply")
+        public var messageActionMarkUnread: UIImage = loadSafely(systemName: "message.badge", assetsFallback: "mark_unread")
+
         public var messageActionEdit: UIImage = loadImageSafely(with: "icn_edit")
         public var messageActionCopy: UIImage = loadImageSafely(with: "icn_copy")
         public var messageActionBlockUser: UIImage = loadImageSafely(with: "icn_block_user")
@@ -221,17 +245,28 @@ public extension Appearance {
         public var fileAttachmentActionIcons: [LocalAttachmentState?: UIImage] {
             get { _fileAttachmentActionIcons ??
                 [
-                    .uploaded: download,
                     .uploadingFailed: restart,
                     nil: folder
                 ]
             }
             set { _fileAttachmentActionIcons = newValue }
         }
-        
+
+        private var _fileAttachmentDownloadActionIcons: [LocalAttachmentDownloadState?: UIImage]?
+        public var fileAttachmentDownloadActionIcons: [LocalAttachmentDownloadState?: UIImage] {
+            get { _fileAttachmentDownloadActionIcons ??
+                [
+                    .downloaded: share,
+                    .downloadingFailed: download,
+                    nil: download
+                ]
+            }
+            set { _fileAttachmentDownloadActionIcons = newValue }
+        }
+
         public var camera: UIImage = loadImageSafely(with: "camera")
         public var bigPlay: UIImage = loadImageSafely(with: "play_big")
-        
+
         public var play: UIImage = loadImageSafely(with: "play")
         public var pause: UIImage = loadImageSafely(with: "pause")
 

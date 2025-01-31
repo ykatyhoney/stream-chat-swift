@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -15,12 +15,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
         UINavigationBar.appearance().tintColor = .black
-        
-        window = UIWindow(frame: UIScreen.main.bounds)
-        window?.makeKeyAndVisible()
-        window?.rootViewController = UINavigationController(
-            rootViewController: SlackChatChannelListViewController()
-        )
+
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        window.rootViewController = SplashViewController { [unowned window] in
+            window.rootViewController = UINavigationController(
+                rootViewController: SlackChatChannelListViewController()
+            )
+        }
+        window.makeKeyAndVisible()
+        self.window = window
 
         return true
     }

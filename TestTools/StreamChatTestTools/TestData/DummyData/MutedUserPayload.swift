@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -19,11 +19,13 @@ extension MutedUserPayload {
                 role: .user,
                 createdAt: .unique,
                 updatedAt: .unique,
+                deactivatedAt: nil,
                 lastActiveAt: .unique,
                 isOnline: true,
                 isInvisible: true,
                 isBanned: true,
                 teams: [],
+                language: nil,
                 extraData: extraData
             ),
             created: .unique,

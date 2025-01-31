@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -21,11 +21,27 @@ final class ChatClient_Mock: ChatClient {
     @Atomic var completeTokenWaiters_called = false
     @Atomic var completeTokenWaiters_token: Token?
 
-    override var backgroundWorkers: [Worker] {
-        _backgroundWorkers ?? super.backgroundWorkers
+    var mockedAppSettings: AppSettings?
+
+    override var appSettings: AppSettings? {
+        mockedAppSettings
     }
 
-    private var _backgroundWorkers: [Worker]?
+    var mockedEventNotificationCenter: EventNotificationCenter_Mock? = nil
+
+    override var eventNotificationCenter: EventNotificationCenter {
+        mockedEventNotificationCenter ?? super.eventNotificationCenter
+    }
+
+    override var backgroundWorkers: [Worker] {
+        _backgroundWorkers.isEmpty ? super.backgroundWorkers : _backgroundWorkers
+    }
+    
+    func addBackgroundWorker(_ worker: Worker) {
+        _backgroundWorkers.append(worker)
+    }
+
+    private var _backgroundWorkers = [Worker]()
 
     // MARK: - Overrides
 
@@ -39,11 +55,16 @@ final class ChatClient_Mock: ChatClient {
 
         super.init(
             config: config,
-            environment: environment
+            environment: environment,
+            factory: ChatClientFactory(config: config, environment: environment)
         )
         if !workerBuilders.isEmpty {
             _backgroundWorkers = workerBuilders.map { $0(databaseContainer, apiClient) }
         }
+    }
+    
+    override var currentUserId: UserId? {
+        return currentUserId_mock
     }
 
     public var currentUserId_mock: UserId? {
@@ -54,7 +75,7 @@ final class ChatClient_Mock: ChatClient {
             (authenticationRepository as? AuthenticationRepository_Mock)?.mockedCurrentUserId = newValue
         }
     }
-    
+
     override func createBackgroundWorkers() {
         createBackgroundWorkers_called = true
 
@@ -90,7 +111,7 @@ final class ChatClient_Mock: ChatClient {
         completeTokenWaiters_called = false
         completeTokenWaiters_token = nil
 
-        _backgroundWorkers?.removeAll()
+        _backgroundWorkers.removeAll()
         init_completion = nil
     }
 }
@@ -104,7 +125,7 @@ extension ChatClient {
     }
 
     /// Create a new instance of mock `ChatClient`
-    static func mock(config: ChatClientConfig? = nil) -> ChatClient {
+    static func mock(config: ChatClientConfig? = nil, bundle: Bundle? = nil) -> ChatClient_Mock {
         .init(
             config: config ?? defaultMockedConfig,
             environment: .init(
@@ -120,13 +141,14 @@ extension ChatClient {
                 databaseContainerBuilder: {
                     DatabaseContainer_Spy(
                         kind: $0,
-                        shouldFlushOnStart: $1,
-                        shouldResetEphemeralValuesOnStart: $2,
-                        localCachingSettings: $3,
-                        deletedMessagesVisibility: $4,
-                        shouldShowShadowedMessages: $5
+                        bundle: bundle,
+                        chatClientConfig: $1
                     )
-                }
+                },
+                internetConnection: { center, _ in
+                    InternetConnection_Mock(notificationCenter: center)
+                },
+                authenticationRepositoryBuilder: AuthenticationRepository_Mock.init
             )
         )
     }
@@ -140,29 +162,45 @@ extension ChatClient {
             environment: .mock
         )
     }
-    
+
     var mockAPIClient: APIClient_Spy {
         apiClient as! APIClient_Spy
     }
     
+    var mockChannelListUpdater: ChannelListUpdater_Spy {
+        channelListUpdater as! ChannelListUpdater_Spy
+    }
+
     var mockWebSocketClient: WebSocketClient_Mock {
         webSocketClient as! WebSocketClient_Mock
     }
-    
+
     var mockDatabaseContainer: DatabaseContainer_Spy {
         databaseContainer as! DatabaseContainer_Spy
     }
-    
-    var mockSyncRepository: SyncRepository_Spy {
-        syncRepository as! SyncRepository_Spy
+
+    var mockExtensionLifecycle: NotificationExtensionLifecycle_Mock {
+        extensionLifecycle as! NotificationExtensionLifecycle_Mock
+    }
+
+    var mockSyncRepository: SyncRepository_Mock {
+        syncRepository as! SyncRepository_Mock
+    }
+
+    var mockMessageRepository: MessageRepository_Mock {
+        messageRepository as! MessageRepository_Mock
+    }
+
+    var mockOfflineRequestsRepository: OfflineRequestsRepository_Mock {
+        offlineRequestsRepository as! OfflineRequestsRepository_Mock
+    }
+
+    var mockAuthenticationRepository: AuthenticationRepository_Mock {
+        authenticationRepository as! AuthenticationRepository_Mock
     }
     
-    var mockMessageRepository: MessageRepository_Spy {
-        messageRepository as! MessageRepository_Spy
-    }
-    
-    var mockOfflineRequestsRepository: OfflineRequestsRepository_Spy {
-        offlineRequestsRepository as! OfflineRequestsRepository_Spy
+    var mockPollsRepository: PollsRepository_Mock {
+        pollsRepository as! PollsRepository_Mock
     }
 
     func simulateProvidedConnectionId(connectionId: ConnectionId?) {
@@ -191,23 +229,21 @@ extension ChatClient.Environment {
             },
             databaseContainerBuilder: {
                 DatabaseContainer_Spy(
-                    kind: .onDisk(databaseFileURL: .newTemporaryFileURL()),
-                    shouldFlushOnStart: $1,
-                    shouldResetEphemeralValuesOnStart: $2,
-                    localCachingSettings: $3,
-                    deletedMessagesVisibility: $4,
-                    shouldShowShadowedMessages: $5
+                    kind: .inMemory,
+                    chatClientConfig: $1
                 )
             },
+            extensionLifecycleBuilder: NotificationExtensionLifecycle_Mock.init,
             requestEncoderBuilder: DefaultRequestEncoder.init,
             requestDecoderBuilder: DefaultRequestDecoder.init,
             eventDecoderBuilder: EventDecoder.init,
             notificationCenterBuilder: EventNotificationCenter.init,
-            clientUpdaterBuilder: ChatClientUpdater_Mock.init,
             authenticationRepositoryBuilder: AuthenticationRepository_Mock.init,
-            syncRepositoryBuilder: SyncRepository_Spy.init,
-            messageRepositoryBuilder: MessageRepository_Spy.init,
-            offlineRequestsRepositoryBuilder: OfflineRequestsRepository_Spy.init
+            syncRepositoryBuilder: SyncRepository_Mock.init,
+            pollsRepositoryBuilder: PollsRepository_Mock.init,
+            channelListUpdaterBuilder: ChannelListUpdater_Spy.init,
+            messageRepositoryBuilder: MessageRepository_Mock.init,
+            offlineRequestsRepositoryBuilder: OfflineRequestsRepository_Mock.init
         )
     }
 
@@ -218,7 +254,7 @@ extension ChatClient.Environment {
                 webSocketEnvironment.eventBatcherBuilder = {
                     Batcher<Event>(period: 0, handler: $0)
                 }
-                
+
                 return WebSocketClient(
                     sessionConfiguration: $0,
                     requestEncoder: $1,
@@ -227,6 +263,52 @@ extension ChatClient.Environment {
                     environment: webSocketEnvironment
                 )
             }
+        )
+    }
+}
+
+extension ChatClient {
+    convenience init(config: ChatClientConfig, environment: ChatClient.Environment) {
+        self.init(
+            config: config,
+            environment: environment,
+            factory: ChatClientFactory(config: config, environment: environment)
+        )
+    }
+}
+
+extension AppSettings {
+    static func mock(
+        name: String = "Stream iOS",
+        fileUploadConfig: UploadConfig? = nil,
+        imageUploadConfig: UploadConfig? = nil,
+        autoTranslationEnabled: Bool = false,
+        asyncUrlEnrichEnabled: Bool = false
+    ) -> AppSettings {
+        .init(
+            name: name,
+            fileUploadConfig: fileUploadConfig ?? .mock(),
+            imageUploadConfig: imageUploadConfig ?? .mock(),
+            autoTranslationEnabled: autoTranslationEnabled,
+            asyncUrlEnrichEnabled: asyncUrlEnrichEnabled
+        )
+    }
+}
+
+extension AppSettings.UploadConfig {
+    static func mock(
+        allowedFileExtensions: [String] = [],
+        blockedFileExtensions: [String] = [],
+        allowedMimeTypes: [String] = [],
+        blockedMimeTypes: [String] = [],
+        sizeLimitInBytes: Int64? = nil
+    ) -> AppSettings.UploadConfig {
+        .init(
+            allowedFileExtensions: allowedFileExtensions,
+            blockedFileExtensions: blockedFileExtensions,
+            allowedMimeTypes: allowedMimeTypes,
+            blockedMimeTypes: blockedMimeTypes,
+            sizeLimitInBytes: sizeLimitInBytes
         )
     }
 }

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -14,7 +14,7 @@ extension Endpoint {
             body: nil
         )
     }
-    
+
     static func deleteMessage(messageId: MessageId, hard: Bool) -> Endpoint<MessagePayload.Boxed> {
         .init(
             path: .deleteMessage(messageId),
@@ -24,18 +24,32 @@ extension Endpoint {
             body: ["hard": hard]
         )
     }
-    
-    static func editMessage(payload: MessageRequestBody)
+
+    static func editMessage(payload: MessageRequestBody, skipEnrichUrl: Bool)
         -> Endpoint<EmptyResponse> {
         .init(
             path: .editMessage(payload.id),
             method: .post,
             queryItems: nil,
             requiresConnectionId: false,
-            body: ["message": payload]
+            body: [
+                "message": AnyEncodable(payload),
+                "skip_enrich_url": AnyEncodable(skipEnrichUrl)
+            ]
         )
     }
     
+    static func pinMessage(messageId: MessageId, request: MessagePartialUpdateRequest)
+        -> Endpoint<EmptyResponse> {
+        .init(
+            path: .pinMessage(messageId),
+            method: .put,
+            queryItems: nil,
+            requiresConnectionId: false,
+            body: request
+        )
+    }
+
     static func loadReplies(messageId: MessageId, pagination: MessagesPagination)
         -> Endpoint<MessageRepliesPayload> {
         .init(
@@ -44,50 +58,6 @@ extension Endpoint {
             queryItems: nil,
             requiresConnectionId: false,
             body: pagination
-        )
-    }
-
-    static func loadReactions(messageId: MessageId, pagination: Pagination) -> Endpoint<MessageReactionsPayload> {
-        .init(
-            path: .reactions(messageId),
-            method: .get,
-            queryItems: nil,
-            requiresConnectionId: false,
-            body: pagination
-        )
-    }
-    
-    static func addReaction(
-        _ type: MessageReactionType,
-        score: Int,
-        enforceUnique: Bool,
-        extraData: [String: RawJSON],
-        messageId: MessageId
-    ) -> Endpoint<EmptyResponse> {
-        let body = MessageReactionRequestPayload(
-            enforceUnique: enforceUnique,
-            reaction: ReactionRequestPayload(
-                type: type,
-                score: score,
-                extraData: extraData
-            )
-        )
-        return .init(
-            path: .addReaction(messageId),
-            method: .post,
-            queryItems: nil,
-            requiresConnectionId: false,
-            body: body
-        )
-    }
-    
-    static func deleteReaction(_ type: MessageReactionType, messageId: MessageId) -> Endpoint<EmptyResponse> {
-        .init(
-            path: .deleteReaction(messageId, type),
-            method: .delete,
-            queryItems: nil,
-            requiresConnectionId: false,
-            body: nil
         )
     }
 
@@ -108,11 +78,11 @@ extension Endpoint {
             )
         )
     }
-    
+
     static func search(query: MessageSearchQuery) -> Endpoint<MessageSearchResultsPayload> {
         .init(path: .search, method: .get, queryItems: nil, requiresConnectionId: false, body: ["payload": query])
     }
-    
+
     static func translate(messageId: MessageId, to language: TranslationLanguage) -> Endpoint<MessagePayload.Boxed> {
         .init(
             path: .translateMessage(messageId),
@@ -121,5 +91,29 @@ extension Endpoint {
             requiresConnectionId: false,
             body: ["language": language.languageCode]
         )
+    }
+}
+
+// MARK: - Helper data structures
+
+struct MessagePartialUpdateRequest: Encodable {
+    var set: SetProperties?
+    var unset: [String]? = []
+    var skipEnrichUrl: Bool?
+    var userId: String?
+    var user: UserRequestBody?
+
+    /// The available message properties that can be updated.
+    struct SetProperties: Encodable {
+        var pinned: Bool?
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: MessagePayloadsCodingKeys.self)
+        try container.encodeIfPresent(skipEnrichUrl, forKey: .skipEnrichUrl)
+        try container.encodeIfPresent(userId, forKey: .userId)
+        try container.encodeIfPresent(user, forKey: .user)
+        try container.encodeIfPresent(set, forKey: .set)
+        try container.encodeIfPresent(unset, forKey: .unset)
     }
 }

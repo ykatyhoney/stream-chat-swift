@@ -1,10 +1,11 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
 @testable import StreamChatTestTools
 @testable import StreamChatUI
+import StreamSwiftTestHelpers
 import XCTest
 
 final class ChatChannelListVC_Tests: XCTestCase {
@@ -15,18 +16,18 @@ final class ChatChannelListVC_Tests: XCTestCase {
     var mockedRouter: ChatChannelListRouterMock { vc.router as! ChatChannelListRouterMock }
 
     var channels: [ChatChannel] = []
-    
+
     // Workaround for setting mockedCurrentUserController to userAvatarView.
     class TestChatChannelListVC: ChatChannelListVC {
         var mockedCurrentUserController: CurrentChatUserController_Mock?
-        
+
         override func setUp() {
             super.setUp()
             userAvatarView.components = .mock
             userAvatarView.controller = mockedCurrentUserController
         }
     }
-    
+
     override func setUp() {
         super.setUp()
 
@@ -42,10 +43,11 @@ final class ChatChannelListVC_Tests: XCTestCase {
         testVC.mockedCurrentUserController = mockedCurrentUserController
         vc = testVC
         vc.controller = mockedChannelListController
-        
+
         var components = Components.mock
         components.channelListRouter = ChatChannelListRouterMock.self
         vc.components = components
+        vc.appearance.formatters.channelListMessageTimestamp = DefaultMessageTimestampFormatter()
 
         channels = .dummy()
     }
@@ -55,7 +57,7 @@ final class ChatChannelListVC_Tests: XCTestCase {
         view = nil
         mockedChannelListController = nil
         mockedCurrentUserController = nil
-        
+
         super.tearDown()
     }
 
@@ -65,12 +67,13 @@ final class ChatChannelListVC_Tests: XCTestCase {
         mockedChannelListController.simulate(state: .remoteDataFetched)
         AssertSnapshot(vc, isEmbeddedInNavigationController: true)
     }
-    
+
     func test_defaultAppearance() {
         mockedChannelListController.simulate(
             channels: channels,
             changes: []
         )
+        vc.reloadChannels()
         AssertSnapshot(vc, isEmbeddedInNavigationController: true)
     }
 
@@ -120,7 +123,8 @@ final class ChatChannelListVC_Tests: XCTestCase {
 
         let vc = TestView()
         vc.controller = mockedChannelListController
-        
+        vc.appearance.formatters.channelListMessageTimestamp = DefaultMessageTimestampFormatter()
+
         var components = Components.mock
         components.channelCellSeparator = TestSeparatorView.self
         vc.components = components
@@ -129,40 +133,47 @@ final class ChatChannelListVC_Tests: XCTestCase {
             channels: channels,
             changes: []
         )
+        vc.reloadChannels()
         AssertSnapshot(vc, isEmbeddedInNavigationController: true, variants: .onlyUserInterfaceStyles)
     }
-    
+
+    func test_appearance_withSearchBar() {
+        vc.components.channelListSearchStrategy = .messages
+        mockedChannelListController.channels_mock = channels
+        mockedChannelListController.simulate(state: .remoteDataFetched)
+        vc.executeLifecycleMethods()
+        AssertSnapshot(vc, isEmbeddedInNavigationController: true)
+    }
+
     func test_makeChatChannelListVC() {
         let mockedController = ChatChannelListController_Mock.mock()
         let mockChatChannelListVC = TestChatChannelListVC.make(with: mockedController)
-        
+
         XCTAssertNotNil(mockChatChannelListVC)
         XCTAssert(mockChatChannelListVC.isKind(of: ChatChannelListVC.self))
     }
-    
+
     func test_router_openCurrentUserProfile() {
         vc.executeLifecycleMethods()
-        
+
         vc.userAvatarView.simulateEvent(.touchUpInside)
         XCTAssertTrue(mockedRouter.openCurrentUserProfileCalled)
     }
-    
+
     func test_router_openChat() {
         vc.executeLifecycleMethods()
-        
+
         let channel = ChatChannel.mock(
             cid: .unique,
             name: "Channel",
             imageURL: TestImages.yoda.url
         )
 
-        mockedChannelListController.simulateInitial(
-            channels: [channel],
-            state: .remoteDataFetched
-        )
-                
+        mockedChannelListController.channels_mock = [channel]
+        vc.reloadChannels()
+
         vc.collectionView(vc.collectionView, didSelectItemAt: IndexPath(item: 0, section: 0))
-        XCTAssertEqual(mockedRouter.openChat_channelId, vc.controller.channels.first?.cid)
+        XCTAssertEqual(mockedRouter.openChat_channelId, channel.cid)
     }
 
     func test_usesCorrectComponentsTypes_whenCustomTypesDefined() {
@@ -178,166 +189,69 @@ final class ChatChannelListVC_Tests: XCTestCase {
 
         XCTAssert(channelListVC.collectionViewLayout is OtherCollectionLayout)
     }
-    
+
     func test_didChangeState_whenRemoteDataFetchedAndChannelsAreEmpty_thenEmptyViewIsShown() {
         // GIVEN
         let emptyViewHidden = false
         vc.components.isChatChannelListStatesEnabled = true
-        
+
         // WHEN
         vc.controller(vc.controller, didChangeState: .remoteDataFetched)
-        
+
         // THEN
         XCTAssertEqual(emptyViewHidden, vc.emptyView.isHidden)
     }
-    
+
     func test_didChangeState_whenRemoteDataFetchedFailed_thenErrorViewIsShown() {
         // GIVEN
         let errorViewHidden = false
         vc.components.isChatChannelListStatesEnabled = true
-        
+
         // WHEN
         vc.controller(vc.controller, didChangeState: .remoteDataFetchFailed(ClientError()))
-        
+
         // THEN
         XCTAssertEqual(errorViewHidden, vc.channelListErrorView.isHidden)
     }
 
-    func test_shouldAddNewChannelToList_whenCurrentUserIsMember_shouldReturnTrue() {
-        let channelListVC = FakeChatChannelListVC()
-        channelListVC.controller = mockedChannelListController
+    func test_didChangeState_whenLocalDataFetched_whenChannelsNotEmpty_shouldHideLoadingView() {
+        vc.components.isChatChannelListStatesEnabled = true
+        mockedChannelListController.channels_mock = [.mock(cid: .unique)]
+        vc.chatChannelListLoadingView.isHidden = false
 
-        let channel = ChatChannel.mock(cid: .unique, membership: .mock(id: .unique))
-        XCTAssertTrue(channelListVC.controller(mockedChannelListController, shouldAddNewChannelToList: channel))
+        vc.controller(mockedChannelListController, didChangeState: .localDataFetched)
+
+        XCTAssertEqual(vc.chatChannelListLoadingView.isHidden, true)
     }
 
-    func test_shouldAddNewChannelToList_whenCurrentUserIsNotMember_shouldReturnFalse() {
-        let channelListVC = FakeChatChannelListVC()
-        channelListVC.controller = mockedChannelListController
+    func test_didChangeState_whenLocalDataFetched_whenChannelsEmpty_shouldShowLoadingView() {
+        vc.components.isChatChannelListStatesEnabled = true
+        mockedChannelListController.channels_mock = []
+        vc.chatChannelListLoadingView.isHidden = true
 
-        let channel = ChatChannel.mock(cid: .unique, membership: nil)
-        XCTAssertFalse(channelListVC.controller(mockedChannelListController, shouldAddNewChannelToList: channel))
+        vc.controller(mockedChannelListController, didChangeState: .localDataFetched)
+
+        XCTAssertEqual(vc.chatChannelListLoadingView.isHidden, false)
     }
 
-    func test_shouldListUpdatedChannel_whenCurrentUserIsMember_shouldReturnTrue() {
-        let channelListVC = FakeChatChannelListVC()
-        channelListVC.controller = mockedChannelListController
+    func test_didChangeState_whenInitialized_whenChannelsNotEmpty_shouldHideLoadingView() {
+        vc.components.isChatChannelListStatesEnabled = true
+        mockedChannelListController.channels_mock = [.mock(cid: .unique)]
+        vc.chatChannelListLoadingView.isHidden = false
 
-        let channel = ChatChannel.mock(cid: .unique, membership: .mock(id: .unique))
-        XCTAssertTrue(channelListVC.controller(mockedChannelListController, shouldListUpdatedChannel: channel))
+        vc.controller(mockedChannelListController, didChangeState: .initialized)
+
+        XCTAssertEqual(vc.chatChannelListLoadingView.isHidden, true)
     }
 
-    func test_shouldListUpdatedChannel_whenCurrentUserIsNotMember_shouldReturnFalse() {
-        let channelListVC = FakeChatChannelListVC()
-        channelListVC.controller = mockedChannelListController
+    func test_didChangeState_whenInitialized_whenChannelsEmpty_shouldShowLoadingView() {
+        vc.components.isChatChannelListStatesEnabled = true
+        mockedChannelListController.channels_mock = []
+        vc.chatChannelListLoadingView.isHidden = true
 
-        let channel = ChatChannel.mock(cid: .unique, membership: nil)
-        XCTAssertFalse(channelListVC.controller(mockedChannelListController, shouldListUpdatedChannel: channel))
-    }
+        vc.controller(mockedChannelListController, didChangeState: .initialized)
 
-    func test_didChangeChannels_whenNoConflicts_performBatchUpdates() {
-        let channelListVC = FakeChatChannelListVC()
-        channelListVC.controller = mockedChannelListController
-
-        let noConflictChanges: [ListChange<ChatChannel>] = [
-            .update(.mock(cid: .unique), index: .init(row: 1, section: 0)),
-            .update(.mock(cid: .unique), index: .init(row: 2, section: 0)),
-            .insert(.mock(cid: .unique), index: .init(row: 3, section: 0)),
-            .remove(.mock(cid: .unique), index: .init(row: 4, section: 0))
-        ]
-
-        mockedChannelListController.simulate(
-            channels: [.mock(cid: .unique), .mock(cid: .unique), .mock(cid: .unique)],
-            changes: noConflictChanges
-        )
-
-        channelListVC.controller(mockedChannelListController, didChangeChannels: noConflictChanges)
-        XCTAssertEqual(channelListVC.mockedCollectionView.performBatchUpdatesCallCount, 1)
-        XCTAssertEqual(channelListVC.mockedCollectionView.reloadDataCallCount, 0)
-    }
-
-    func test_didChangeChannels_whenHasRemoveConflicts_reloadData() {
-        let channelListVC = FakeChatChannelListVC()
-        channelListVC.controller = mockedChannelListController
-
-        let hasConflictChanges: [ListChange<ChatChannel>] = [
-            .update(.mock(cid: .unique), index: .init(row: 1, section: 0)),
-            .update(.mock(cid: .unique), index: .init(row: 2, section: 0)),
-            .insert(.mock(cid: .unique), index: .init(row: 3, section: 0)),
-            .remove(.mock(cid: .unique), index: .init(row: 3, section: 0))
-        ]
-
-        mockedChannelListController.simulate(
-            channels: [.mock(cid: .unique), .mock(cid: .unique), .mock(cid: .unique)],
-            changes: hasConflictChanges
-        )
-
-        channelListVC.controller(mockedChannelListController, didChangeChannels: hasConflictChanges)
-        XCTAssertEqual(channelListVC.mockedCollectionView.performBatchUpdatesCallCount, 0)
-        XCTAssertEqual(channelListVC.mockedCollectionView.reloadDataCallCount, 1)
-    }
-
-    func test_didChangeChannels_whenHasMoveConflicts_reloadData() {
-        let channelListVC = FakeChatChannelListVC()
-        channelListVC.controller = mockedChannelListController
-
-        let hasConflictChanges: [ListChange<ChatChannel>] = [
-            .update(.mock(cid: .unique), index: .init(row: 1, section: 0)),
-            .update(.mock(cid: .unique), index: .init(row: 2, section: 0)),
-            .insert(.mock(cid: .unique), index: .init(row: 3, section: 0)),
-            .move(.mock(cid: .unique), fromIndex: .init(row: 3, section: 0), toIndex: .init(row: 4, section: 0))
-        ]
-
-        mockedChannelListController.simulate(
-            channels: [.mock(cid: .unique), .mock(cid: .unique), .mock(cid: .unique)],
-            changes: hasConflictChanges
-        )
-
-        channelListVC.controller(mockedChannelListController, didChangeChannels: hasConflictChanges)
-        XCTAssertEqual(channelListVC.mockedCollectionView.performBatchUpdatesCallCount, 0)
-        XCTAssertEqual(channelListVC.mockedCollectionView.reloadDataCallCount, 1)
-    }
-
-    func test_didChangeChannels_whenHasInsertConflicts_reloadData() {
-        let channelListVC = FakeChatChannelListVC()
-        channelListVC.controller = mockedChannelListController
-
-        let hasConflictChanges: [ListChange<ChatChannel>] = [
-            .update(.mock(cid: .unique), index: .init(row: 1, section: 0)),
-            .remove(.mock(cid: .unique), index: .init(row: 2, section: 0)),
-            .insert(.mock(cid: .unique), index: .init(row: 3, section: 0)),
-            .insert(.mock(cid: .unique), index: .init(row: 2, section: 0))
-        ]
-
-        mockedChannelListController.simulate(
-            channels: [.mock(cid: .unique), .mock(cid: .unique), .mock(cid: .unique)],
-            changes: hasConflictChanges
-        )
-
-        channelListVC.controller(mockedChannelListController, didChangeChannels: hasConflictChanges)
-        XCTAssertEqual(channelListVC.mockedCollectionView.performBatchUpdatesCallCount, 0)
-        XCTAssertEqual(channelListVC.mockedCollectionView.reloadDataCallCount, 1)
-    }
-
-    func test_didChangeChannels_whenHasUpdateConflicts_reloadData() {
-        let channelListVC = FakeChatChannelListVC()
-        channelListVC.controller = mockedChannelListController
-
-        let hasConflictChanges: [ListChange<ChatChannel>] = [
-            .update(.mock(cid: .unique), index: .init(row: 1, section: 0)),
-            .update(.mock(cid: .unique), index: .init(row: 2, section: 0)),
-            .insert(.mock(cid: .unique), index: .init(row: 3, section: 0)),
-            .remove(.mock(cid: .unique), index: .init(row: 3, section: 0))
-        ]
-
-        mockedChannelListController.simulate(
-            channels: [.mock(cid: .unique), .mock(cid: .unique), .mock(cid: .unique)],
-            changes: hasConflictChanges
-        )
-
-        channelListVC.controller(mockedChannelListController, didChangeChannels: hasConflictChanges)
-        XCTAssertEqual(channelListVC.mockedCollectionView.performBatchUpdatesCallCount, 0)
-        XCTAssertEqual(channelListVC.mockedCollectionView.reloadDataCallCount, 1)
+        XCTAssertEqual(vc.chatChannelListLoadingView.isHidden, false)
     }
 
     func test_didChangeChannels_whenIsNotVisible_dontUpdateData_setSkippedRendering() {
@@ -345,7 +259,7 @@ final class ChatChannelListVC_Tests: XCTestCase {
         channelListVC.controller = mockedChannelListController
         channelListVC.shouldMockViewIfLoaded = false
         XCTAssertEqual(channelListVC.skippedRendering, false)
-        
+
         channelListVC.controller(mockedChannelListController, didChangeChannels: [])
 
         XCTAssertEqual(channelListVC.mockedCollectionView.performBatchUpdatesCallCount, 0)
@@ -353,23 +267,98 @@ final class ChatChannelListVC_Tests: XCTestCase {
         XCTAssertEqual(channelListVC.skippedRendering, true)
     }
 
-    func test_viewWillAppear_whenSkippedRendering_shouldCallReloadData() {
+    func test_didChangeChannels_whenIsNotVisible_shouldStillUpdateStateViews() {
+        mockedChannelListController.channels_mock = [.mock(cid: .unique)]
+        mockedChannelListController.state_mock = .remoteDataFetched
+        let channelListVC = FakeChatChannelListVC()
+        channelListVC.components.isChatChannelListStatesEnabled = true
+        channelListVC.controller = mockedChannelListController
+        channelListVC.shouldMockViewIfLoaded = false
+        channelListVC.emptyView.isHidden = false
+
+        channelListVC.controller(mockedChannelListController, didChangeChannels: [])
+
+        XCTAssertEqual(channelListVC.emptyView.isHidden, true)
+        XCTAssertEqual(channelListVC.mockedCollectionView.performBatchUpdatesCallCount, 0)
+        XCTAssertEqual(channelListVC.mockedCollectionView.reloadDataCallCount, 0)
+    }
+
+    func test_didChangeChannels_whenEmptyViewVisible_whenNewChannelsNotEmpty_shouldHideEmptyView() {
+        let channelListVC = FakeChatChannelListVC()
+        channelListVC.components.isChatChannelListStatesEnabled = true
+        channelListVC.controller = mockedChannelListController
+        mockedChannelListController.state_mock = .remoteDataFetched
+        mockedChannelListController.channels_mock = [.mock(cid: .unique)]
+        channelListVC.emptyView.isHidden = false
+
+        channelListVC.viewWillAppear(false)
+        channelListVC.controller(mockedChannelListController, didChangeChannels: [])
+
+        XCTAssertEqual(channelListVC.emptyView.isHidden, true)
+    }
+
+    func test_didChangeChannels_whenEmptyViewHidden_whenNewChannelsIsEmpty_shouldShowEmptyView() {
+        let channelListVC = FakeChatChannelListVC()
+        channelListVC.components.isChatChannelListStatesEnabled = true
+        channelListVC.controller = mockedChannelListController
+        mockedChannelListController.state_mock = .remoteDataFetched
+        mockedChannelListController.channels_mock = []
+        channelListVC.emptyView.isHidden = true
+
+        channelListVC.viewWillAppear(false)
+        channelListVC.controller(mockedChannelListController, didChangeChannels: [])
+
+        XCTAssertEqual(channelListVC.emptyView.isHidden, false)
+    }
+
+    func test_viewWillAppear_whenSkippedRendering_shouldReloadData() {
         let channelListVC = FakeChatChannelListVC()
         channelListVC.controller = mockedChannelListController
         channelListVC.shouldMockViewIfLoaded = false
+        mockedChannelListController.channels_mock = [.mock(cid: .unique), .mock(cid: .unique)]
         channelListVC.controller(mockedChannelListController, didChangeChannels: [])
         XCTAssertEqual(channelListVC.skippedRendering, true)
-
+        XCTAssertEqual(channelListVC.skipChannelUpdates, true)
+        
         channelListVC.viewWillAppear(false)
 
         XCTAssertEqual(channelListVC.skippedRendering, false)
-        XCTAssertEqual(channelListVC.mockedCollectionView.reloadDataCallCount, 1)
+        XCTAssertEqual(channelListVC.skipChannelUpdates, false)
+        XCTAssertEqual(channelListVC.reloadChannelsCallCount, 1)
+    }
+    
+    func test_swipeableViewActionViews() {
+        mockedChannelListController.channels_mock = [.mock(cid: .unique, ownCapabilities: [.deleteChannel])]
+        let channelListVC = ChatChannelListVC()
+        channelListVC.controller = mockedChannelListController
+        channelListVC.reloadChannels()
+
+        let swipeViews = channelListVC.swipeableViewActionViews(for: IndexPath(item: 0, section: 0))
+        let swipeViewIdentifiers = Set(swipeViews.compactMap(\.accessibilityIdentifier))
+        XCTAssertEqual(swipeViewIdentifiers, Set(["deleteView", "moreView"]))
+    }
+
+    func test_swipeableViewActionViews_whenCantDeleteChannel() {
+        mockedChannelListController.channels_mock = [.mock(cid: .unique, ownCapabilities: [])]
+        let channelListVC = ChatChannelListVC()
+        channelListVC.controller = mockedChannelListController
+        channelListVC.reloadChannels()
+
+        let swipeViews = channelListVC.swipeableViewActionViews(for: IndexPath(item: 0, section: 0))
+        let swipeViewIdentifiers = Set(swipeViews.compactMap(\.accessibilityIdentifier))
+        XCTAssertFalse(channelListVC.channels.isEmpty)
+        XCTAssertEqual(swipeViewIdentifiers, Set(["moreView"]))
     }
 
     private class FakeChatChannelListVC: ChatChannelListVC {
         var mockedCollectionView: MockCollectionView = MockCollectionView()
         override var collectionView: UICollectionView {
             mockedCollectionView
+        }
+
+        var reloadChannelsCallCount = 0
+        override func reloadChannels() {
+            reloadChannelsCallCount += 1
         }
 
         class MockView: UIView {

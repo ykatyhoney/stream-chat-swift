@@ -1,8 +1,9 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
+import StreamChatTestTools
 import XCTest
 
 final class AnyAttachmentUpdater_Tests: XCTestCase {
@@ -13,6 +14,7 @@ final class AnyAttachmentUpdater_Tests: XCTestCase {
             id: .init(cid: .unique, messageId: .unique, index: .unique),
             type: .image,
             payload: .init(title: "old", imageRemoteURL: .localYodaImage, extraData: [:]),
+            downloadingState: nil,
             uploadingState: nil
         ).asAnyAttachment
 
@@ -27,7 +29,7 @@ final class AnyAttachmentUpdater_Tests: XCTestCase {
             expectation.fulfill()
         }
 
-        waitForExpectations(timeout: 0.5)
+        waitForExpectations(timeout: defaultTimeout)
 
         let imageAttachment = attachment.attachment(payloadType: ImageAttachmentPayload.self)
 

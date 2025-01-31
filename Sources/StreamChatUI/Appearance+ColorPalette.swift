@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import UIKit
@@ -12,10 +12,12 @@ public extension Appearance {
         public var text: UIColor = .streamBlack
         public var textInverted: UIColor = .streamWhite
         public var textLowEmphasis: UIColor = .streamGrayDisabledText
+        public var textLinkColor: UIColor = .systemBlue
 
         /// Static color which should stay the same in dark and light mode, because it's only used as text on small UI Elements
         /// such as `ChatUnreadCountView`, `GiphyBadge` or Commands icon.
         public var staticColorText: UIColor = .streamWhiteStatic
+        public var staticBlackColorText: UIColor = .streamBlackStatic
         public var subtitleText: UIColor = .streamGray
 
         // MARK: - Text interactions
@@ -43,6 +45,10 @@ public extension Appearance {
         public var highlightedAccentBackground: UIColor = .streamAccentBlue
         public var highlightedAccentBackground1: UIColor = .streamBlueAlice
 
+        public var messageCellHighlightBackground: UIColor = .streamYellowBackground
+        public var pinnedMessageBackground: UIColor = .streamYellowBackground
+        public var jumpToUnreadButtonBackground: UIColor = .streamGrayDisabledText
+
         // MARK: - Borders and shadows
 
         public var shadow: UIColor = .streamModalShadow
@@ -50,14 +56,16 @@ public extension Appearance {
         public var border: UIColor = .streamGrayGainsboro
         public var border2: UIColor = .streamGray
         public var border3: UIColor = .streamGrayWhisper
+        public var hoverButtonShadow: UIColor = .streamIconButtonShadow
 
         // MARK: - Tint and alert
 
+        public var validationError: UIColor = .streamAccentRed
         public var alert: UIColor = .streamAccentRed
         public var alternativeActiveTint: UIColor = .streamAccentGreen
         public var inactiveTint: UIColor = .streamGray
         public var alternativeInactiveTint: UIColor = .streamGrayGainsboro
-        
+
         public var accentPrimary: UIColor = .streamAccentPrimary
     }
 }
@@ -67,7 +75,7 @@ public extension Appearance {
 // implementing dark mode support.
 private extension UIColor {
     static let streamAccentPrimary = mode(0x005fff, 0x337eff)
-    
+
     /// This is color palette used by design team.
     /// If you see any color not from this list in figma, point it out to anyone in design team.
     static let streamBlack = mode(0x000000, 0xffffff)
@@ -84,29 +92,28 @@ private extension UIColor {
     static let streamAccentRed = mode(0xff3742, 0xff3742)
     static let streamAccentGreen = mode(0x20e070, 0x20e070)
     static let streamGrayDisabledText = mode(0x72767e, 0x72767e)
-    
+    static let streamYellowBackground = mode(0xfbf4dd, 0x333024)
+
     // Currently we are not using the correct shadow color from figma's color palette. This is to avoid
     // an issue with snapshots inconsistency between Intel vs M1. We can't use shadows with transparency.
     // So we apply a light gray color to fake the transparency.
     static let streamModalShadow = mode(0xd6d6d6, lightAlpha: 1, 0, darkAlpha: 1)
 
     static let streamWhiteStatic = mode(0xffffff, 0xffffff)
+    static let streamBlackStatic = mode(0x000000, 0x000000)
 
     static let streamBGGradientFrom = mode(0xf7f7f7, 0x101214)
     static let streamBGGradientTo = mode(0xfcfcfc, 0x070a0d)
     static let streamOverlay = mode(0x000000, lightAlpha: 0.2, 0x000000, darkAlpha: 0.4)
     static let streamOverlayDark = mode(0x000000, lightAlpha: 0.6, 0xffffff, darkAlpha: 0.8)
     static let streamOverlayDarkStatic = mode(0x000000, lightAlpha: 0.6, 0x000000, darkAlpha: 0.6)
+    static let streamIconButtonShadow = mode(0x000000, lightAlpha: 0.25, 0x000000, darkAlpha: 0.25)
 
     static func mode(_ light: Int, lightAlpha: CGFloat = 1.0, _ dark: Int, darkAlpha: CGFloat = 1.0) -> UIColor {
-        if #available(iOS 13.0, *) {
-            return UIColor { traitCollection in
-                traitCollection.userInterfaceStyle == .dark
-                    ? UIColor(rgb: dark).withAlphaComponent(darkAlpha)
-                    : UIColor(rgb: light).withAlphaComponent(lightAlpha)
-            }
-        } else {
-            return UIColor(rgb: light).withAlphaComponent(lightAlpha)
+        UIColor { traitCollection in
+            traitCollection.userInterfaceStyle == .dark
+                ? UIColor(rgb: dark).withAlphaComponent(darkAlpha)
+                : UIColor(rgb: light).withAlphaComponent(lightAlpha)
         }
     }
 }

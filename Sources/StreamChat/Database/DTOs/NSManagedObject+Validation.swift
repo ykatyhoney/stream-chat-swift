@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
@@ -14,6 +14,11 @@ extension NSManagedObject {
             return false
         }
         return true
+    }
+    
+    func isNotDeleted() throws {
+        guard isDeleted else { return }
+        throw DeletedModel(self)
     }
 }
 
@@ -30,3 +35,19 @@ struct InvalidModel: LocalizedError {
         "\(entityName ?? "Unknown") object with ID \(id) is invalid"
     }
 }
+
+struct DeletedModel: LocalizedError {
+    let id: NSManagedObjectID
+    let entityName: String?
+    
+    init(_ model: NSManagedObject) {
+        id = model.objectID
+        entityName = model.entity.name
+    }
+    
+    var errorDescription: String? {
+        "\(entityName ?? "Unknown") object with ID \(id) is deleted"
+    }
+}
+
+struct RecursionLimitError: LocalizedError {}

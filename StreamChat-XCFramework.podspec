@@ -1,6 +1,6 @@
 Pod::Spec.new do |spec|
   spec.name = "StreamChat-XCFramework"
-  spec.version = "4.24.1"
+  spec.version = "4.71.0"
   spec.summary = "StreamChat iOS Client"
   spec.description = "stream-chat-swift is the official Swift client for Stream Chat, a service for building chat applications."
 
@@ -9,8 +9,8 @@ Pod::Spec.new do |spec|
   spec.author = { "getstream.io" => "support@getstream.io" }
   spec.social_media_url = "https://getstream.io"
 
-  spec.swift_version = "5.5"
-  spec.ios.deployment_target  = '11.0'
+  spec.swift_version = '5.7'
+  spec.ios.deployment_target  = '13.0'
   spec.requires_arc = true
 
   spec.framework = "Foundation"

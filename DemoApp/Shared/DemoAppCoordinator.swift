@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -8,18 +8,15 @@ import UIKit
 
 final class DemoAppCoordinator: NSObject {
     internal let window: UIWindow
-    internal let chat: StreamChatWrapper
     internal let pushNotifications: PushNotifications
 
     init(
         window: UIWindow,
-        chat: StreamChatWrapper,
         pushNotifications: PushNotifications
     ) {
         self.window = window
-        self.chat = chat
         self.pushNotifications = pushNotifications
-        
+
         super.init()
 
         handlePushNotificationResponse()
@@ -31,15 +28,21 @@ final class DemoAppCoordinator: NSObject {
                 return
             }
             guard
-                let chatNotificationInfo = self?.chat.notificationInfo(for: response),
+                let chatNotificationInfo = StreamChatWrapper.shared.notificationInfo(for: response),
                 let cid = chatNotificationInfo.cid else {
                 return
             }
 
-            self?.start(cid: cid)
+            self?.start(cid: cid) { error in
+                if let error = error {
+                    log.error("Error showing channel from notification \(error)")
+                } else {
+                    log.debug("Successfully showing channel from notification")
+                }
+            }
         }
     }
-    
+
     func set(rootViewController: UIViewController, animated: Bool) {
         if animated {
             UIView.transition(with: window, duration: 0.3, options: .transitionFlipFromLeft) {

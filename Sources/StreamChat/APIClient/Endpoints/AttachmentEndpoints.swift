@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -10,6 +10,19 @@ extension Endpoint {
             path: .uploadAttachment(channelId: cid.apiPath, type: type == .image ? "image" : "file"),
             method: .post,
             queryItems: nil,
+            requiresConnectionId: false,
+            body: nil
+        )
+    }
+
+    static func enrichUrl(url: URL)
+        -> Endpoint<LinkAttachmentPayload> {
+        .init(
+            path: .og,
+            method: .get,
+            queryItems: [
+                "url": url.absoluteString
+            ],
             requiresConnectionId: false,
             body: nil
         )

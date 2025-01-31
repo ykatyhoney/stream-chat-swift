@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -30,11 +30,12 @@ public class StreamAttachmentUploader: AttachmentUploader {
         progress: ((Double) -> Void)?,
         completion: @escaping (Result<UploadedAttachment, Error>) -> Void
     ) {
-        cdnClient.uploadAttachment(attachment, progress: progress) { result in
-            completion(result.map { url in
+        cdnClient.uploadAttachment(attachment, progress: progress) { (result: Result<UploadedFile, Error>) in
+            completion(result.map { file in
                 let uploadedAttachment = UploadedAttachment(
                     attachment: attachment,
-                    remoteURL: url
+                    remoteURL: file.fileURL,
+                    thumbnailURL: file.thumbnailURL
                 )
                 return uploadedAttachment
             })

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -9,7 +9,13 @@ public struct Token: Decodable, Equatable, ExpressibleByStringLiteral {
     public let rawValue: String
     public let userId: UserId
     public let expiration: Date?
-    
+
+    @available(
+        *,
+        deprecated,
+        
+        message: "It is not a good practice to check expiration client side since the user can change the device's time."
+    )
     public var isExpired: Bool {
         expiration.map { $0 < Date() } ?? false
     }
@@ -65,39 +71,39 @@ public extension Token {
     /// Is used by `development(userId:)` token provider.
     static func development(userId: UserId) -> Self {
         log.assert(!userId.isEmpty, "The provided `userId` must not be empty.")
-        
+
         let header = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" //  {"alg": "HS256", "typ": "JWT"}
         let payload = #"{"user_id":"\#(userId)"}"#.data(using: .utf8)!.base64EncodedString()
         let devSignature = "devtoken"
 
         let jwt = [header, payload, devSignature].joined(separator: ".")
-            
+
         return .init(rawValue: jwt, userId: userId, expiration: nil)
     }
 }
 
 extension ClientError {
-    public class InvalidToken: ClientError {}
+    public final class InvalidToken: ClientError {}
 }
 
 private extension String {
     var jwtPayload: [String: Any]? {
         let parts = split(separator: ".")
-        
+
         if parts.count == 3,
            let payloadData = jwtDecodeBase64(String(parts[1])),
            let json = (try? JSONSerialization.jsonObject(with: payloadData)) as? [String: Any] {
             return json
         }
-        
+
         return nil
     }
-    
+
     func jwtDecodeBase64(_ input: String) -> Data? {
         let removeEndingCount = input.count % 4
         let ending = removeEndingCount > 0 ? String(repeating: "=", count: 4 - removeEndingCount) : ""
         let base64 = input.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/") + ending
-        
+
         return Data(base64Encoded: base64)
     }
 }

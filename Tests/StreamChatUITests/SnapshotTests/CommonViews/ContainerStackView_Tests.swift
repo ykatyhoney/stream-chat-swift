@@ -1,38 +1,39 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChatUI
+import StreamSwiftTestHelpers
 import XCTest
 
 final class ContainerStackView_Tests: XCTestCase {
     var views: [UIView] = []
-    
+
     let axis: [String: NSLayoutConstraint.Axis] = [
         "vertical": .vertical,
         "horizontal": .horizontal
     ]
-    
+
     let alignments: [String: ContainerStackView.Alignment] = [
         "fill": .fill,
         "axisLeading": .leading,
         "axisTrailing": .trailing,
         "center": .center
     ]
-    
+
     let distributions: [String: ContainerStackView.Distribution] = [
         "natural": .natural,
         "equal": .equal
     ]
-    
+
     let spacings: [CGFloat] = [.infinity, 32, 0]
-    
+
     override func setUp() {
         super.setUp()
-        
+
         let texts = ["Long label 1", "Lbl2", "Label 3"]
         let colors: [UIColor] = [.red, .green, .blue]
-        
+
         views = zip(texts, colors).map { text, color in
             let label = UILabel().withoutAutoresizingMaskConstraints
             label.text = text
@@ -58,7 +59,7 @@ final class ContainerStackView_Tests: XCTestCase {
 
         AssertSnapshot(containerV, variants: [.defaultLight], suffix: "vertical")
     }
-    
+
     func testAppearance_withTwoImageViews() {
         let containerH = ContainerStackView(
             axis: .horizontal,
@@ -75,10 +76,10 @@ final class ContainerStackView_Tests: XCTestCase {
         containerH.spacing = 0
         containerH.alignment = .fill
         containerH.distribution = .equal
-        
+
         AssertSnapshot(containerH, variants: [.defaultLight])
     }
-    
+
     func testAppearance_withTwoImageViewsWhereOneIsHidden() {
         let yodaImageView = UIImageView(
             image: TestImages.yoda.image
@@ -96,12 +97,12 @@ final class ContainerStackView_Tests: XCTestCase {
         containerH.spacing = 0
         containerH.alignment = .fill
         containerH.distribution = .equal
-        
+
         yodaImageView.isHidden = true
-        
+
         AssertSnapshot(containerH, variants: [.defaultLight])
     }
-    
+
     func testAppearance_withDoubleHiddenImageView() {
         let yodaImageView = UIImageView(
             image: TestImages.yoda.image
@@ -109,7 +110,7 @@ final class ContainerStackView_Tests: XCTestCase {
         let vaderImageView = UIImageView(
             image: TestImages.vader.image
         )
-        
+
         let containerV = ContainerStackView(
             axis: .vertical,
             arrangedSubviews: [
@@ -121,19 +122,19 @@ final class ContainerStackView_Tests: XCTestCase {
         containerV.spacing = 10
         containerV.alignment = .fill
         containerV.distribution = .equal
-        
+
         yodaImageView.isHidden = true
         vaderImageView.isHidden = true
-        
+
         yodaImageView.isHidden = true
         vaderImageView.isHidden = true
-        
+
         yodaImageView.isHidden = false
         vaderImageView.isHidden = false
-        
+
         AssertSnapshot(containerV, variants: [.defaultLight])
     }
-    
+
     func testAppearance_withTwoContainerStackViews() {
         let leftContainer = ContainerStackView(
             axis: .vertical,
@@ -168,17 +169,17 @@ final class ContainerStackView_Tests: XCTestCase {
         containerH.spacing = 0
         containerH.alignment = .fill
         containerH.distribution = .equal
-        
+
         AssertSnapshot(containerH, variants: [.defaultLight])
     }
-    
+
     func testAppearance() {
         let container = ContainerStackView(
             axis: .vertical,
             alignment: .fill,
             arrangedSubviews: views
         ).withoutAutoresizingMaskConstraints
-        
+
         axis.forEach { (axisName, axis) in
             alignments.forEach { (alignmentName, alignment) in
                 distributions.forEach { (distributionName, distribution) in

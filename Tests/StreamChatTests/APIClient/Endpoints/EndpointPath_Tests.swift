@@ -1,45 +1,83 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
 import XCTest
 
 final class EndpointPathTests: XCTestCase {
-    func sendMessage_shouldBeQueuedOffline() throws {
-        try XCTAssertTrue(EndpointPath.sendMessage(ChannelId(cid: "")).shouldBeQueuedOffline)
+    func test_sendMessage_shouldBeQueuedOffline() throws {
+        XCTAssertTrue(EndpointPath.sendMessage(.unique).shouldBeQueuedOffline)
     }
 
-    func editMessage_shouldBeQueuedOffline() {
+    func test_editMessage_shouldBeQueuedOffline() {
         XCTAssertTrue(EndpointPath.editMessage("").shouldBeQueuedOffline)
     }
 
-    func deleteMessage_shouldBeQueuedOffline() {
+    func test_deleteMessage_shouldBeQueuedOffline() {
         XCTAssertTrue(EndpointPath.deleteMessage("").shouldBeQueuedOffline)
     }
+    
+    func test_pinMessage_shouldBeQueuedOffline() {
+        XCTAssertTrue(EndpointPath.pinMessage("").shouldBeQueuedOffline)
+    }
 
-    func addReaction_shouldBeQueuedOffline() {
+    func test_addReaction_shouldBeQueuedOffline() {
         XCTAssertTrue(EndpointPath.addReaction("").shouldBeQueuedOffline)
     }
 
-    func deleteReaction_shouldBeQueuedOffline() {
+    func test_deleteReaction_shouldBeQueuedOffline() {
         XCTAssertTrue(EndpointPath.deleteReaction("", "").shouldBeQueuedOffline)
     }
 
-    func createChannel_shouldNOTBeQueuedOffline() {
+    func test_createChannel_shouldNOTBeQueuedOffline() {
         XCTAssertFalse(EndpointPath.createChannel("").shouldBeQueuedOffline)
     }
 
-    func updateChannel_shouldNOTBeQueuedOffline() {
+    func test_updateChannel_shouldNOTBeQueuedOffline() {
         XCTAssertFalse(EndpointPath.updateChannel("").shouldBeQueuedOffline)
     }
 
-    func deleteChannel_shouldNOTBeQueuedOffline() {
+    func test_deleteChannel_shouldNOTBeQueuedOffline() {
         XCTAssertFalse(EndpointPath.deleteChannel("").shouldBeQueuedOffline)
     }
 
-    func banMember_shouldNOTBeQueuedOffline() {
+    func test_banMember_shouldNOTBeQueuedOffline() {
         XCTAssertFalse(EndpointPath.banMember.shouldBeQueuedOffline)
+    }
+
+    func test_og_shouldNOTBeQueuedOffline() {
+        XCTAssertFalse(EndpointPath.og.shouldBeQueuedOffline)
+    }
+
+    func test_threads_shouldNOTBeQueuedOffline() {
+        XCTAssertFalse(EndpointPath.threads.shouldBeQueuedOffline)
+        XCTAssertFalse(EndpointPath.thread(messageId: "1").shouldBeQueuedOffline)
+    }
+    
+    func test_polls_shouldNOTBeQueuedOffline() {
+        XCTAssertFalse(EndpointPath.polls.shouldBeQueuedOffline)
+        XCTAssertFalse(EndpointPath.pollsQuery.shouldBeQueuedOffline)
+        XCTAssertFalse(EndpointPath.poll(pollId: "test_poll").shouldBeQueuedOffline)
+        XCTAssertFalse(EndpointPath.pollVotes(pollId: "test_poll").shouldBeQueuedOffline)
+        XCTAssertFalse(EndpointPath.pollOptions(pollId: "test_poll").shouldBeQueuedOffline)
+        XCTAssertFalse(EndpointPath.pollOption(pollId: "test_poll", optionId: "option_id").shouldBeQueuedOffline)
+        XCTAssertFalse(EndpointPath.pollVoteInMessage(messageId: "test_message", pollId: "test_poll").shouldBeQueuedOffline)
+        XCTAssertFalse(EndpointPath.pollVote(messageId: "test_message", pollId: "test_poll", voteId: "test_vote").shouldBeQueuedOffline)
+    }
+
+    func test_unread_shouldNOTBeQueuedOffline() {
+        XCTAssertFalse(EndpointPath.unread.shouldBeQueuedOffline)
+    }
+
+    func test_partialMemberUpdate_shouldNOTBeQueuedOffline() {
+        XCTAssertFalse(EndpointPath.partialMemberUpdate(userId: "1", cid: .unique).shouldBeQueuedOffline)
+    }
+
+    func test_partialMemberUpdate_value() {
+        let cid = ChannelId.unique
+        let path = EndpointPath.partialMemberUpdate(userId: "1", cid: cid).value
+        XCTAssertEqual(path, "channels/\(cid.apiPath)/member/1")
     }
 
     // MARK: - Codable
@@ -50,8 +88,12 @@ final class EndpointPathTests: XCTestCase {
         assertResultEncodingAndDecoding(.users)
         assertResultEncodingAndDecoding(.guest)
         assertResultEncodingAndDecoding(.members)
+        assertResultEncodingAndDecoding(.partialMemberUpdate(userId: "1", cid: .init(type: .messaging, id: "2")))
         assertResultEncodingAndDecoding(.search)
         assertResultEncodingAndDecoding(.devices)
+        assertResultEncodingAndDecoding(.threads)
+        assertResultEncodingAndDecoding(.thread(messageId: "1"))
+        assertResultEncodingAndDecoding(.appSettings)
 
         assertResultEncodingAndDecoding(.channels)
         assertResultEncodingAndDecoding(.createChannel("channel_idc"))
@@ -72,6 +114,7 @@ final class EndpointPathTests: XCTestCase {
         assertResultEncodingAndDecoding(.message("message_idm"))
         assertResultEncodingAndDecoding(.editMessage("message_ide"))
         assertResultEncodingAndDecoding(.deleteMessage("message_idd"))
+        assertResultEncodingAndDecoding(.pinMessage("message_idp"))
         assertResultEncodingAndDecoding(.replies("message_idr"))
         assertResultEncodingAndDecoding(.reactions("message_idre"))
         assertResultEncodingAndDecoding(.addReaction("message_ida"))
@@ -82,6 +125,16 @@ final class EndpointPathTests: XCTestCase {
         assertResultEncodingAndDecoding(.flagUser(false))
         assertResultEncodingAndDecoding(.flagMessage(false))
         assertResultEncodingAndDecoding(.muteUser(false))
+        assertResultEncodingAndDecoding(.blockUser)
+        
+        assertResultEncodingAndDecoding(.polls)
+        assertResultEncodingAndDecoding(.pollsQuery)
+        assertResultEncodingAndDecoding(.poll(pollId: "test_poll"))
+        assertResultEncodingAndDecoding(.pollVotes(pollId: "test_poll"))
+        assertResultEncodingAndDecoding(.pollOptions(pollId: "test_poll"))
+        assertResultEncodingAndDecoding(.pollOption(pollId: "test_poll", optionId: "option_id"))
+        assertResultEncodingAndDecoding(.pollVoteInMessage(messageId: "test_message", pollId: "test_poll"))
+        assertResultEncodingAndDecoding(.pollVote(messageId: "test_message", pollId: "test_poll", voteId: "test_vote"))
     }
 }
 
@@ -90,7 +143,7 @@ extension EndpointPathTests {
         do {
             let encoded = try JSONEncoder.stream.encode(value)
             let result = try JSONDecoder.stream.decode(EndpointPath.self, from: encoded)
-            XCTAssertEqual(result, value, file: file, line: line)
+            XCTAssertEqual(result.value, value.value, file: file, line: line)
         } catch {
             XCTFail("Should not fail encoding/decoding", file: file, line: line)
         }

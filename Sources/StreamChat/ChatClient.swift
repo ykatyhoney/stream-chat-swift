@@ -1,7 +1,8 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
+import Combine
 import CoreData
 import Foundation
 
@@ -9,6 +10,8 @@ import Foundation
 ///
 /// Typically, an app contains just one instance of `ChatClient`. However, it's possible to have multiple instances if your use
 /// case requires it (i.e. more than one window with different workspaces in a Slack-like app).
+///
+/// - Important: When using multiple instances of `ChatClient` at the same time, it is required to use a different ``ChatClientConfig/localStorageFolderURL`` for each instance. For example, adding an additional path component to the default URL.
 public class ChatClient {
     /// The `UserId` of the currently logged in user.
     public var currentUserId: UserId? {
@@ -20,228 +23,90 @@ public class ChatClient {
         authenticationRepository.currentToken
     }
 
+    /// The app configuration settings. It is automatically fetched when `connectUser` is called.
+    /// Can be manually refetched by calling `loadAppSettings()`.
+    public private(set) var appSettings: AppSettings?
+
     /// The current connection status of the client.
     ///
-    /// To observe changes in the connection status, create an instance of `CurrentChatUserController`, and use it to receive
+    /// To observe changes in the connection status, create an instance of `ChatConnectionController`, and use it to receive
     /// callbacks when the connection status changes.
     ///
-    public internal(set) var connectionStatus: ConnectionStatus = .initialized
+    public var connectionStatus: ConnectionStatus {
+        connectionRepository.connectionStatus
+    }
 
     /// The config object of the `ChatClient` instance.
     ///
     /// This value can't be mutated and can only be set when initializing a new `ChatClient` instance.
     ///
     public let config: ChatClientConfig
-    
+
     /// A `Worker` represents a single atomic piece of functionality.
     ///
     /// `ChatClient` initializes a set of background workers that keep observing the current state of the system and perform
     /// work if needed (i.e. when a new message pending sent appears in the database, a worker tries to send it.)
     private(set) var backgroundWorkers: [Worker] = []
 
-    /// Keeps a weak reference to the active channel list controllers to ensure a proper recovery when coming back online
-    private(set) var activeChannelListControllers = ThreadSafeWeakCollection<ChatChannelListController>()
-    private(set) var activeChannelControllers = ThreadSafeWeakCollection<ChatChannelController>()
-
     /// Background worker that takes care about client connection recovery when the Internet comes back OR app transitions from background to foreground.
     private(set) var connectionRecoveryHandler: ConnectionRecoveryHandler?
 
     /// The notification center used to send and receive notifications about incoming events.
-    private(set) lazy var eventNotificationCenter: EventNotificationCenter = {
-        let center = environment.notificationCenterBuilder(databaseContainer)
+    private(set) var eventNotificationCenter: EventNotificationCenter
 
-        let middlewares: [EventMiddleware] = [
-            EventDataProcessorMiddleware(),
-            TypingStartCleanupMiddleware(
-                excludedUserIds: { [weak self] in Set([self?.currentUserId].compactMap { $0 }) },
-                emitEvent: { [weak center] in center?.process($0) }
-            ),
-            ChannelReadUpdaterMiddleware(),
-            UserTypingStateUpdaterMiddleware(),
-            ChannelTruncatedEventMiddleware(),
-            MemberEventMiddleware(),
-            UserChannelBanEventsMiddleware(),
-            UserWatchingEventMiddleware(),
-            ChannelVisibilityEventMiddleware(),
-            EventDTOConverterMiddleware()
-        ]
+    /// The registry that contains all the attachment payloads associated with their attachment types.
+    /// For the meantime this is a static property to avoid breaking changes. On v5, this can be changed.
+    private(set) static var attachmentTypesRegistry: [AttachmentType: AttachmentPayload.Type] = [
+        .image: ImageAttachmentPayload.self,
+        .video: VideoAttachmentPayload.self,
+        .audio: AudioAttachmentPayload.self,
+        .file: FileAttachmentPayload.self,
+        .voiceRecording: VoiceRecordingAttachmentPayload.self
+    ]
 
-        center.add(middlewares: middlewares)
+    let connectionRepository: ConnectionRepository
 
-        return center
-    }()
+    let authenticationRepository: AuthenticationRepository
 
-    // MARK: Repositories
+    let messageRepository: MessageRepository
 
-    private(set) lazy var authenticationRepository = environment.authenticationRepositoryBuilder(
-        apiClient,
-        databaseContainer,
-        clientUpdater,
-        environment.tokenExpirationRetryStrategy,
-        environment.timerType
-    )
+    let offlineRequestsRepository: OfflineRequestsRepository
 
-    private(set) lazy var messageRepository = environment.messageRepositoryBuilder(
-        databaseContainer,
-        apiClient
-    )
+    let syncRepository: SyncRepository
+
+    let channelRepository: ChannelRepository
     
-    private(set) lazy var offlineRequestsRepository = environment.offlineRequestsRepositoryBuilder(
-        messageRepository,
-        databaseContainer,
-        apiClient
-    )
+    let pollsRepository: PollsRepository
 
-    /// A repository that handles all the executions needed to keep the Database in sync with remote.
-    private(set) lazy var syncRepository: SyncRepository = {
-        let channelRepository = ChannelListUpdater(database: databaseContainer, apiClient: apiClient)
-        return environment.syncRepositoryBuilder(
-            config,
-            activeChannelControllers,
-            activeChannelListControllers,
-            offlineRequestsRepository,
-            eventNotificationCenter,
-            databaseContainer,
-            apiClient
-        )
-    }()
+    let channelListUpdater: ChannelListUpdater
 
-    /// A repository that handles all the executions needed to keep the Database in sync with remote.
-    private(set) lazy var callRepository: CallRepository = {
-        environment.callRepositoryBuilder(apiClient)
-    }()
-    
+    func makeMessagesPaginationStateHandler() -> MessagesPaginationStateHandling {
+        MessagesPaginationStateHandler()
+    }
+
     /// The `APIClient` instance `Client` uses to communicate with Stream REST API.
-    lazy var apiClient: APIClient = {
-        var encoder = environment.requestEncoderBuilder(config.baseURL.restAPIBaseURL, config.apiKey)
-        encoder.connectionDetailsProviderDelegate = self
-        
-        let decoder = environment.requestDecoderBuilder()
+    let apiClient: APIClient
 
-        let attachmentUploader = config.customAttachmentUploader ?? StreamAttachmentUploader(
-            cdnClient: config.customCDNClient ?? StreamCDNClient(
-                encoder: encoder,
-                decoder: decoder,
-                sessionConfiguration: urlSessionConfiguration
-            )
-        )
-        
-        let apiClient = environment.apiClientBuilder(
-            urlSessionConfiguration,
-            encoder,
-            decoder,
-            attachmentUploader,
-            { [weak self] completion in
-                guard let self = self else {
-                    completion()
-                    return
-                }
-                self.refreshToken(
-                    completion: { _ in completion() }
-                )
-            },
-            { [weak self] endpoint in
-                self?.syncRepository.queueOfflineRequest(endpoint: endpoint)
-            }
-        )
-        return apiClient
-    }()
-    
     /// The `WebSocketClient` instance `Client` uses to communicate with Stream WS servers.
-    lazy var webSocketClient: WebSocketClient? = {
-        var encoder = environment.requestEncoderBuilder(config.baseURL.webSocketBaseURL, config.apiKey)
-        encoder.connectionDetailsProviderDelegate = self
-                
-        // Create a WebSocketClient.
-        let webSocketClient = environment.webSocketClientBuilder?(
-            urlSessionConfiguration,
-            encoder,
-            EventDecoder(),
-            eventNotificationCenter
-        )
+    let webSocketClient: WebSocketClient?
 
-        if let currentUserId = currentUserId {
-            webSocketClient?.connectEndpoint = Endpoint<EmptyResponse>.webSocketConnect(
-                userInfo: UserInfo(id: currentUserId)
-            )
-        }
-        
-        webSocketClient?.connectionStateDelegate = self
-        
-        return webSocketClient
-    }()
-    
     /// The `DatabaseContainer` instance `Client` uses to store and cache data.
-    private(set) lazy var databaseContainer: DatabaseContainer = {
-        do {
-            if config.isLocalStorageEnabled {
-                guard let storeURL = config.localStorageFolderURL else {
-                    throw ClientError.MissingLocalStorageURL()
-                }
-                
-                // Create the folder if needed
-                try FileManager.default.createDirectory(
-                    at: storeURL,
-                    withIntermediateDirectories: true,
-                    attributes: nil
-                )
-                
-                let dbFileURL = storeURL.appendingPathComponent(config.apiKey.apiKeyString)
-                return environment.databaseContainerBuilder(
-                    .onDisk(databaseFileURL: dbFileURL),
-                    config.shouldFlushLocalStorageOnStart,
-                    config.isClientInActiveMode, // Only reset Ephemeral values in active mode
-                    config.localCaching,
-                    config.deletedMessagesVisibility,
-                    config.shouldShowShadowedMessages
-                )
-            }
-            
-        } catch is ClientError.MissingLocalStorageURL {
-            log.assertionFailure("The URL provided in ChatClientConfig can't be `nil`. Falling back to the in-memory option.")
-            
-        } catch {
-            log.error("Failed to initialize the local storage with error: \(error). Falling back to the in-memory option.")
-        }
-        
-        return environment.databaseContainerBuilder(
-            .inMemory,
-            config.shouldFlushLocalStorageOnStart,
-            config.isClientInActiveMode, // Only reset Ephemeral values in active mode
-            config.localCaching,
-            config.deletedMessagesVisibility,
-            config.shouldShowShadowedMessages
-        )
-    }()
-    
-    private(set) lazy var clientUpdater = environment.clientUpdaterBuilder(self)
+    let databaseContainer: DatabaseContainer
+
+    /// Used as a bridge to communicate between the host app and the notification extension. Holds the state for the app lifecycle.
+    let extensionLifecycle: NotificationExtensionLifecycle
+
+    /// The component responsible to timeout the user connection if it takes more time than the `ChatClientConfig.reconnectionTimeout`.
+    var reconnectionTimeoutHandler: StreamTimer?
 
     /// The environment object containing all dependencies of this `Client` instance.
     private let environment: Environment
+    
+    @Atomic static var activeLocalStorageURLs = Set<URL>()
 
     /// The default configuration of URLSession to be used for both the `APIClient` and `WebSocketClient`. It contains all
     /// required header auth parameters to make a successful request.
-    private var urlSessionConfiguration: URLSessionConfiguration {
-        let configuration = URLSessionConfiguration.default
-        configuration.waitsForConnectivity = false
-        configuration.httpAdditionalHeaders = sessionHeaders
-        configuration.timeoutIntervalForRequest = config.timeoutIntervalForRequest
-        return configuration
-    }
-    
-    /// Stream-specific request headers.
-    private let sessionHeaders: [String: String] = [
-        "X-Stream-Client": SystemEnvironment.xStreamClientHeader
-    ]
-    
-    /// The current connection id
-    @Atomic var connectionId: String?
-    
-    /// An array of requests waiting for the connection id
-    @Atomic private(set) var connectionIdWaiters: [String: (String?) -> Void] = [:]
-
-    /// An array of requests waiting for the token
-    @Atomic private(set) var tokenWaiters: [String: (Token?) -> Void] = [:]
+    private var urlSessionConfiguration: URLSessionConfiguration
 
     /// Creates a new instance of `ChatClient`.
     /// - Parameter config: The config object for the `Client`. See `ChatClientConfig` for all configuration options.
@@ -249,36 +114,140 @@ public class ChatClient {
         config: ChatClientConfig
     ) {
         var environment = Environment()
-        
+
         if !config.isClientInActiveMode {
             environment.webSocketClientBuilder = nil
         }
-        
+
         self.init(
             config: config,
-            environment: environment
+            environment: environment,
+            factory: .init(config: config, environment: environment)
         )
     }
-    
-    /// Creates a new instance of Stream Chat `Client`.
+
+    /// Creates a new instance `ChatClient`.
     ///
     /// - Parameters:
-    ///   - config: The config object for the `Client`.
-    ///   - environment: An object with all external dependencies the new `Client` instance should use.
-    ///
+    ///   - config: The config object for the `ChatClient`.
+    ///   - environment: An object with all external dependencies the new `ChatClient` instance should use.
+    ///   - factory: A factory component to help creating all `ChatClient` dependencies.
     init(
         config: ChatClientConfig,
-        environment: Environment
+        environment: Environment,
+        factory: ChatClientFactory
     ) {
         self.config = config
         self.environment = environment
+        
+        urlSessionConfiguration = factory.makeUrlSessionConfiguration()
+        var apiClientEncoder = factory.makeApiClientRequestEncoder()
+        var webSocketEncoder = factory.makeWebSocketRequestEncoder()
+        let databaseContainer = factory.makeDatabaseContainer()
+        let apiClient = factory.makeApiClient(
+            encoder: apiClientEncoder,
+            urlSessionConfiguration: urlSessionConfiguration
+        )
+        let eventNotificationCenter = factory.makeEventNotificationCenter(
+            databaseContainer: databaseContainer,
+            currentUserId: {
+                nil
+            }
+        )
+        let messageRepository = environment.messageRepositoryBuilder(
+            databaseContainer,
+            apiClient
+        )
+        let offlineRequestsRepository = environment.offlineRequestsRepositoryBuilder(
+            messageRepository,
+            databaseContainer,
+            apiClient,
+            config.queuedActionsMaxHoursThreshold
+        )
+        let channelListUpdater = environment.channelListUpdaterBuilder(
+            databaseContainer,
+            apiClient
+        )
+        let syncRepository = environment.syncRepositoryBuilder(
+            config,
+            offlineRequestsRepository,
+            eventNotificationCenter,
+            databaseContainer,
+            apiClient,
+            channelListUpdater
+        )
+        let webSocketClient = factory.makeWebSocketClient(
+            requestEncoder: webSocketEncoder,
+            urlSessionConfiguration: urlSessionConfiguration,
+            eventNotificationCenter: eventNotificationCenter
+        )
+        let connectionRepository = environment.connectionRepositoryBuilder(
+            config.isClientInActiveMode,
+            syncRepository,
+            webSocketClient,
+            apiClient,
+            environment.timerType
+        )
+        let authRepository = environment.authenticationRepositoryBuilder(
+            apiClient,
+            databaseContainer,
+            connectionRepository,
+            environment.tokenExpirationRetryStrategy,
+            environment.timerType
+        )
 
+        self.channelListUpdater = channelListUpdater
+        self.databaseContainer = databaseContainer
+        self.apiClient = apiClient
+        self.webSocketClient = webSocketClient
+        self.eventNotificationCenter = eventNotificationCenter
+        self.offlineRequestsRepository = offlineRequestsRepository
+        self.connectionRepository = connectionRepository
+        self.messageRepository = messageRepository
+        self.syncRepository = syncRepository
+        authenticationRepository = authRepository
+        extensionLifecycle = environment.extensionLifecycleBuilder(config.applicationGroupIdentifier)
+        channelRepository = environment.channelRepositoryBuilder(
+            databaseContainer,
+            apiClient
+        )
+        pollsRepository = environment.pollsRepositoryBuilder(databaseContainer, apiClient)
+
+        authRepository.delegate = self
+        apiClientEncoder.connectionDetailsProviderDelegate = self
+        webSocketEncoder.connectionDetailsProviderDelegate = self
+        webSocketClient?.connectionStateDelegate = self
+
+        setupTokenRefresher()
+        setupOfflineRequestQueue()
         setupConnectionRecoveryHandler(with: environment)
+        validateIntegrity()
+
+        reconnectionTimeoutHandler = environment.reconnectionHandlerBuilder(config)
+        reconnectionTimeoutHandler?.onChange = { [weak self] in
+            self?.timeout()
+        }
     }
-    
+
     deinit {
+        Self._activeLocalStorageURLs.mutate { $0.subtract(databaseContainer.persistentStoreDescriptions.compactMap(\.url)) }
         completeConnectionIdWaiters(connectionId: nil)
         completeTokenWaiters(token: nil)
+        reconnectionTimeoutHandler?.stop()
+    }
+
+    func setupTokenRefresher() {
+        apiClient.tokenRefresher = { [weak self] completion in
+            self?.refreshToken { _ in
+                completion()
+            }
+        }
+    }
+
+    func setupOfflineRequestQueue() {
+        apiClient.queueOfflineRequest = { [weak self] endpoint in
+            self?.syncRepository.queueOfflineRequest(endpoint: endpoint)
+        }
     }
 
     func setupConnectionRecoveryHandler(with environment: Environment) {
@@ -291,11 +260,40 @@ public class ChatClient {
             webSocketClient,
             eventNotificationCenter,
             syncRepository,
+            extensionLifecycle,
             environment.backgroundTaskSchedulerBuilder(),
             environment.internetConnection(eventNotificationCenter, environment.internetMonitor),
             config.staysConnectedInBackground
         )
     }
+    
+    private func validateIntegrity() {
+        Self._activeLocalStorageURLs.mutate { urls in
+            let existingCount = urls.count
+            urls.formUnion(databaseContainer.persistentStoreDescriptions.compactMap(\.url).filter { $0.path != "/dev/null" })
+            guard existingCount == urls.count, !urls.isEmpty else { return }
+            log.error(
+                """
+                There are multiple ChatClient instances using the same `ChatClientConfig.localStorageFolderURL` - this is disallowed.
+                Either create a shared instance or make sure the previous instance of `ChatClient` is deallocated.
+                """
+            )
+        }
+    }
+
+    /// Register a custom attachment payload.
+    ///
+    /// Example:
+    /// ```
+    /// registerAttachment(CustomAttachmentPayload.self)
+    /// ```
+    ///
+    /// - Parameter payloadType: The payload type of the attachment.
+    public func registerAttachment<Payload: AttachmentPayload>(_ payloadType: Payload.Type) {
+        Self.attachmentTypesRegistry[Payload.type] = payloadType
+    }
+
+    // MARK: - Connecting to the Client
     
     /// Connects the client with the given user.
     ///
@@ -310,13 +308,40 @@ public class ChatClient {
         tokenProvider: @escaping TokenProvider,
         completion: ((Error?) -> Void)? = nil
     ) {
+        reconnectionTimeoutHandler?.start()
+        connectionRecoveryHandler?.start()
+        connectionRepository.initialize()
+
         authenticationRepository.connectUser(
             userInfo: userInfo,
             tokenProvider: tokenProvider,
             completion: { completion?($0) }
         )
+
+        // Whenever the user is connected, we trigger an app settings configuration refetch.
+        loadAppSettings()
     }
     
+    /// Connects the client with the given user.
+    ///
+    /// - Parameters:
+    ///   - userInfo: The user info passed to `connect` endpoint.
+    ///   - tokenProvider: The closure used to retreive a token. Token provider will be used to establish the initial connection and also to obtain the new token when the previous one expires.
+    ///
+    /// - Throws: An error while communicating with the Stream API.
+    /// - Returns: A type representing the connected user and its state.
+    @discardableResult public func connectUser(
+        userInfo: UserInfo,
+        tokenProvider: @escaping TokenProvider
+    ) async throws -> ConnectedUser {
+        try await withCheckedThrowingContinuation { continuation in
+            connectUser(userInfo: userInfo, tokenProvider: tokenProvider) { error in
+                continuation.resume(with: error)
+            }
+        }
+        return try await retrieveConnectedUser()
+    }
+
     /// Connects the client with the given user.
     ///
     /// - Parameters:
@@ -345,8 +370,31 @@ public class ChatClient {
             completion: completion
         )
     }
+    
+    /// Connects the client with the given user.
+    ///
+    /// - Note: Connect endpoint uses an upsert mechanism. If the user does not exist, it will be created with the given `userInfo`. If user already exists, it will get updated with non-nil fields from the `userInfo`.
+    /// - Important: This method can only be used when `token` does not expire. If the token expires, the `connect` API with token provider has to be used.
+    ///
+    /// - Parameters:
+    ///   - userInfo: User info that is passed to the `connect` endpoint for user creation
+    ///   - token: Authorization token for the user.
+    ///
+    /// - Throws: An error while communicating with the Stream API.
+    /// - Returns: A type representing the connected user and its state.
+    @discardableResult public func connectUser(
+        userInfo: UserInfo,
+        token: Token
+    ) async throws -> ConnectedUser {
+        try await withCheckedThrowingContinuation { continuation in
+            connectUser(userInfo: userInfo, token: token) { error in
+                continuation.resume(with: error)
+            }
+        }
+        return try await retrieveConnectedUser()
+    }
 
-    /// Connects a guest user
+    /// Connects a guest user.
     /// - Parameters:
     ///   - userInfo: User info that is passed to the `connect` endpoint for user creation
     ///   - extraData: Extra data for user that is passed to the `connect` endpoint for user creation.
@@ -355,132 +403,229 @@ public class ChatClient {
         userInfo: UserInfo,
         completion: ((Error?) -> Void)? = nil
     ) {
+        connectionRepository.initialize()
+        connectionRecoveryHandler?.start()
+        reconnectionTimeoutHandler?.start()
         authenticationRepository.connectGuestUser(userInfo: userInfo, completion: { completion?($0) })
     }
     
-    /// Connects anonymous user
+    /// Connects a guest user.
+    ///
+    /// - Parameters:
+    ///   - userInfo: User info that is passed to the `connect` endpoint for user creation
+    ///   - extraData: Extra data for user that is passed to the `connect` endpoint for user creation.
+    ///
+    /// - Throws: An error while communicating with the Stream API.
+    /// - Returns: A type representing the connected user and its state.
+    @discardableResult public func connectGuestUser(userInfo: UserInfo) async throws -> ConnectedUser {
+        try await withCheckedThrowingContinuation { continuation in
+            connectGuestUser(userInfo: userInfo) { error in
+                continuation.resume(with: error)
+            }
+        }
+        return try await retrieveConnectedUser()
+    }
+
+    /// Connects an anonymous user
     /// - Parameter completion: The completion that will be called once the **first** user session for the given token is setup.
     public func connectAnonymousUser(completion: ((Error?) -> Void)? = nil) {
-        authenticationRepository.connectUser(
-            userInfo: nil,
-            tokenProvider: { $0(.success(.anonymous)) },
+        connectionRepository.initialize()
+        reconnectionTimeoutHandler?.start()
+        connectionRecoveryHandler?.start()
+        authenticationRepository.connectAnonymousUser(
             completion: { completion?($0) }
         )
     }
     
-    /// Disconnects the chat client from the chat servers. No further updates from the servers
-    /// are received.
-    public func disconnect() {
-        clientUpdater.disconnect(source: .userInitiated) {
-            log.info("The `ChatClient` has been disconnected.", subsystems: .webSocket)
+    /// Connects an anonymous user.
+    ///
+    /// - Throws: An error while communicating with the Stream API.
+    /// - Returns: A type representing the connected user and its state.
+    @discardableResult public func connectAnonymousUser() async throws -> ConnectedUser {
+        try await withCheckedThrowingContinuation { continuation in
+            connectAnonymousUser { error in
+                continuation.resume(with: error)
+            }
         }
-        authenticationRepository.clearTokenProvider()
+        return try await retrieveConnectedUser()
     }
     
-    /// Disconnects the chat client form the chat servers and removes all the local data related.
-    public func logout() {
-        disconnect()
-        authenticationRepository.logOutUser()
-        databaseContainer.removeAllData(force: true) { error in
-            if let error = error {
-                log.error("Logging out current user failed with error \(error)", subsystems: .all)
-                return
-            } else {
-                log.debug("Logging out current user successfully.", subsystems: .all)
+    /// Sets the user token to the client, this method is only needed to perform API calls
+    /// without connecting as a user.
+    /// You should only use this in special cases like a notification service or other background process
+    public func setToken(token: Token) {
+        authenticationRepository.setToken(token: token, completeTokenWaiters: true)
+    }
+
+    /// Disconnects the chat client from the chat servers. No further updates from the servers
+    /// are received.
+    @available(*, deprecated, message: "Use the asynchronous version of `disconnect` for increased safety")
+    public func disconnect() {
+        disconnect {}
+    }
+
+    /// Disconnects the chat client from the chat servers. No further updates from the servers
+    /// are received.
+    public func disconnect(completion: @escaping () -> Void) {
+        connectionRepository.disconnect(source: .userInitiated) {
+            log.info("The `ChatClient` has been disconnected.", subsystems: .webSocket)
+            completion()
+        }
+        authenticationRepository.clearTokenProvider()
+        authenticationRepository.reset()
+    }
+
+    /// Disconnects the chat client from the chat servers. No further updates from the servers
+    /// are received.
+    public func disconnect() async {
+        await withCheckedContinuation { continuation in
+            disconnect {
+                continuation.resume()
             }
         }
     }
+    
+    /// Disconnects the chat client form the chat servers and removes all the local data related.
+    @available(*, deprecated, message: "Use the asynchronous version of `logout` for increased safety")
+    public func logout() {
+        logout {}
+    }
+
+    /// Disconnects the chat client from the chat servers and removes all the local data related.
+    public func logout(completion: @escaping () -> Void) {
+        authenticationRepository.logOutUser()
+
+        // Stop tracking active components
+        syncRepository.removeAllTracked()
+
+        let group = DispatchGroup()
+        group.enter()
+        disconnect {
+            group.leave()
+        }
+
+        group.enter()
+        databaseContainer.removeAllData { error in
+            if let error = error {
+                log.error("Logging out current user failed with error \(error)", subsystems: .all)
+            } else {
+                log.debug("Logging out current user successfully.", subsystems: .all)
+            }
+            group.leave()
+        }
+
+        group.notify(queue: .main) {
+            completion()
+        }
+    }
+    
+    /// Disconnects the chat client form the chat servers and removes all the local data related.
+    public func logout() async {
+        await withCheckedContinuation { continuation in
+            logout {
+                continuation.resume()
+            }
+        }
+    }
+    
+    // MARK: - Listening for Client Events
+    
+    /// Subscribes to web-socket events of the specified event type.
+    ///
+    /// - Note: The handler is always called on the main thread.
+    ///
+    /// An example of observing connection status changes:
+    /// ```swift
+    /// client.subscribe(toEvent: ConnectionStatusUpdated.self) { connectionEvent in
+    ///     switch connectionEvent.connectionStatus {
+    ///         case .connected:
+    ///           …
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// - SeeAlso: ``Chat.subscribe(toEvent:handler:)`` for subscribing to channel specific events.
+    ///
+    /// - Parameters:
+    ///   - event: The event type to subscribe to (e.g. ``ConnectionStatusUpdated``).
+    ///   - handler: The handler closure which is called when the event happens.
+    ///
+    /// - Returns: A cancellable instance, which you use when you end the subscription. Deallocation of the result will tear down the subscription stream.
+    public func subscribe<E>(toEvent event: E.Type, handler: @escaping (E) -> Void) -> AnyCancellable where E: Event {
+        eventNotificationCenter.subscribe(to: E.self, handler: handler)
+    }
+
+    /// Subscribes to all the web-socket events.
+    ///
+    /// - SeeAlso: ``Chat.subscribe(handler:)`` for subscribing to channel specific events.
+    ///
+    /// - Parameter handler: The handler closure which is called when the event happens.
+    ///
+    /// - Returns: A cancellable instance, which you use when you end the subscription. Deallocation of the result will tear down the subscription stream.
+    public func subscribe(_ handler: @escaping (Event) -> Void) -> AnyCancellable {
+        eventNotificationCenter.subscribe(handler: handler)
+    }
+    
+    // MARK: -
+
+    /// Fetches the app settings and updates the ``ChatClient/appSettings``.
+    /// - Parameter completion: The completion block once the app settings has finished fetching.
+    public func loadAppSettings(
+        completion: ((Result<AppSettings, Error>) -> Void)? = nil
+    ) {
+        apiClient.request(endpoint: .appSettings()) { [weak self] result in
+            switch result {
+            case let .success(payload):
+                let appSettings = payload.asModel()
+                self?.appSettings = appSettings
+                try? self?.backgroundWorker(of: AttachmentQueueUploader.self)
+                    .setAppSettings(appSettings)
+                completion?(.success(appSettings))
+            case let .failure(error):
+                completion?(.failure(error))
+            }
+        }
+    }
+    
+    /// Fetches the app settings and updates the ``ChatClient/appSettings``.
+    ///
+    /// - Returns: The latest state of app settings.
+    public func loadAppSettings() async throws -> AppSettings {
+        try await withCheckedThrowingContinuation { continuation in
+            loadAppSettings { continuation.resume(with: $0) }
+        }
+    }
+
+    // MARK: - Internal
 
     func createBackgroundWorkers() {
         guard config.isClientInActiveMode else { return }
 
         // All production workers
         backgroundWorkers = [
-            MessageSender(messageRepository: messageRepository, database: databaseContainer, apiClient: apiClient),
-            NewUserQueryUpdater(database: databaseContainer, apiClient: apiClient),
+            MessageSender(
+                messageRepository: messageRepository,
+                eventsNotificationCenter: eventNotificationCenter,
+                database: databaseContainer,
+                apiClient: apiClient
+            ),
             MessageEditor(messageRepository: messageRepository, database: databaseContainer, apiClient: apiClient),
-            AttachmentQueueUploader(database: databaseContainer, apiClient: apiClient)
+            AttachmentQueueUploader(
+                database: databaseContainer,
+                apiClient: apiClient,
+                attachmentPostProcessor: config.uploadedAttachmentPostProcessor
+            )
         ]
-    }
-
-    func trackChannelController(_ channelController: ChatChannelController) {
-        activeChannelControllers.add(channelController)
-    }
-
-    func trackChannelListController(_ channelListController: ChatChannelListController) {
-        activeChannelListControllers.add(channelListController)
+        try? backgroundWorker(of: AttachmentQueueUploader.self)
+            .setAppSettings(appSettings)
     }
 
     func completeConnectionIdWaiters(connectionId: String?) {
-        _connectionIdWaiters.mutate { waiters in
-            waiters.forEach { $0.value(connectionId) }
-            waiters.removeAll()
-        }
+        connectionRepository.completeConnectionIdWaiters(connectionId: connectionId)
     }
 
     func completeTokenWaiters(token: Token?) {
-        _tokenWaiters.mutate { waiters in
-            waiters.forEach { $0.value(token) }
-            waiters.removeAll()
-        }
-    }
-
-    // MARK: Authentication helpers
-
-    /// Sets the user token to the client, this method is only needed to perform API calls
-    /// without connecting as a user.
-    /// You should only use this in special cases like a notification service or other background process
-    ///
-    /// - Important: Do not call this method if you will be connecting to chat.
-    public func setToken(token: Token) {
-        authenticationRepository.setToken(token: token)
-        completeTokenWaiters(token: token)
-    }
-
-    /// Updates the user information using the new token
-    /// - Parameters:
-    ///   - token: The token for the new user
-    ///   - completeTokenWaiters: A boolean indicating if the token should be passed to the requests that are awaiting
-    ///   - isFirstConnection: A boolean indicating if this is the first connection in the lifecycle of the app
-    func updateUser(with token: Token, completeTokenWaiters: Bool, isFirstConnection: Bool) {
-        authenticationRepository.setToken(token: token)
-
-        if completeTokenWaiters {
-            self.completeTokenWaiters(token: token)
-        }
-
-        if isFirstConnection || backgroundWorkers.isEmpty {
-            createBackgroundWorkers()
-        }
-    }
-
-    /// Cancels any hanging requests and switches to a new user
-    /// - Parameter token: The token for the new user
-    func switchToNewUser(with token: Token) {
-        completeTokenWaiters(token: nil)
-        updateUser(with: token, completeTokenWaiters: false, isFirstConnection: false)
-    }
-
-    /// Updates the WebSocket endpoint to use the passed token and user information for the connection
-    func updateWebSocketEndpoint(with token: Token, userInfo: UserInfo?) {
-        webSocketClient?.connectEndpoint = .webSocketConnect(userInfo: userInfo ?? .init(id: token.userId))
-    }
-
-    /// Clears state related to the current user to leave the client ready for another user
-    /// Will clear:
-    ///     - Background workers
-    ///     - References to active controllers
-    ///     - Database
-    /// - Parameter completion: A block to be executed when the process is completed. Contains an error if something went wrong
-    func clearCurrentUserData(completion: @escaping (Error?) -> Void) {
-        createBackgroundWorkers()
-
-        // Stop tracking active components
-        activeChannelControllers.removeAllObjects()
-        activeChannelListControllers.removeAllObjects()
-
-        // Reset all existing local data.
-        databaseContainer.removeAllData(force: true, completion: completion)
+        authenticationRepository.completeTokenWaiters(token: token)
     }
 
     /// Starts the process to  refresh the token
@@ -490,193 +635,99 @@ public class ChatClient {
             completion?($0)
         }
     }
+
+    private func timeout() {
+        completeConnectionIdWaiters(connectionId: nil)
+        authenticationRepository.completeTokenCompletions(error: ClientError.ReconnectionTimeout())
+        completeTokenWaiters(token: nil)
+        authenticationRepository.reset()
+        let webSocketConnectionState = webSocketClient?.connectionState ?? .initialized
+        connectionRepository.disconnect(source: .timeout(from: webSocketConnectionState)) {}
+    }
+}
+
+extension ChatClient: AuthenticationRepositoryDelegate {
+    func logOutUser(completion: @escaping () -> Void) {
+        logout(completion: completion)
+    }
+
+    func didFinishSettingUpAuthenticationEnvironment(for state: EnvironmentState) {
+        switch state {
+        case .firstConnection, .newUser:
+            createBackgroundWorkers()
+        case .newToken:
+            if backgroundWorkers.isEmpty {
+                createBackgroundWorkers()
+            }
+        }
+    }
+}
+
+extension ChatClient: ConnectionStateDelegate {
+    func webSocketClient(_ client: WebSocketClient, didUpdateConnectionState state: WebSocketConnectionState) {
+        connectionRepository.handleConnectionUpdate(
+            state: state,
+            onExpiredToken: { [weak self] in
+                self?.refreshToken(completion: nil)
+            }
+        )
+        connectionRecoveryHandler?.webSocketClient(client, didUpdateConnectionState: state)
+        try? backgroundWorker(of: MessageSender.self).didUpdateConnectionState(state)
+
+        switch state {
+        case .connecting:
+            if reconnectionTimeoutHandler?.isRunning == false {
+                reconnectionTimeoutHandler?.start()
+            }
+        case .connected:
+            reconnectionTimeoutHandler?.stop()
+        default:
+            break
+        }
+    }
+}
+
+/// `Client` provides connection details for the `RequestEncoder`s it creates.
+extension ChatClient: ConnectionDetailsProviderDelegate {
+    func provideToken(timeout: TimeInterval = 10, completion: @escaping (Result<Token, Error>) -> Void) {
+        authenticationRepository.provideToken(timeout: timeout, completion: completion)
+    }
+
+    func provideConnectionId(timeout: TimeInterval = 10, completion: @escaping (Result<ConnectionId, Error>) -> Void) {
+        connectionRepository.provideConnectionId(timeout: timeout, completion: completion)
+    }
+
+    @discardableResult
+    func provideConnectionId(timeout: TimeInterval = 10) async throws -> ConnectionId {
+        try await withCheckedThrowingContinuation { continuation in
+            provideConnectionId(timeout: timeout) { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
 }
 
 extension ChatClient {
-    /// An object containing all dependencies of `Client`
-    struct Environment {
-        var apiClientBuilder: (
-            _ sessionConfiguration: URLSessionConfiguration,
-            _ requestEncoder: RequestEncoder,
-            _ requestDecoder: RequestDecoder,
-            _ attachmentUploader: AttachmentUploader,
-            _ tokenRefresher: @escaping (@escaping () -> Void) -> Void,
-            _ queueOfflineRequest: @escaping QueueOfflineRequestBlock
-        ) -> APIClient = {
-            APIClient(
-                sessionConfiguration: $0,
-                requestEncoder: $1,
-                requestDecoder: $2,
-                attachmentUploader: $3,
-                tokenRefresher: $4,
-                queueOfflineRequest: $5
-            )
+    func backgroundWorker<T>(of type: T.Type) throws -> T {
+        if let worker = backgroundWorkers.compactMap({ $0 as? T }).first {
+            return worker
         }
-        
-        var webSocketClientBuilder: ((
-            _ sessionConfiguration: URLSessionConfiguration,
-            _ requestEncoder: RequestEncoder,
-            _ eventDecoder: AnyEventDecoder,
-            _ notificationCenter: EventNotificationCenter
-        ) -> WebSocketClient)? = {
-            WebSocketClient(
-                sessionConfiguration: $0,
-                requestEncoder: $1,
-                eventDecoder: $2,
-                eventNotificationCenter: $3
-            )
+        if currentUserId == nil {
+            throw ClientError.CurrentUserDoesNotExist()
         }
-        
-        var databaseContainerBuilder: (
-            _ kind: DatabaseContainer.Kind,
-            _ shouldFlushOnStart: Bool,
-            _ shouldResetEphemeralValuesOnStart: Bool,
-            _ localCachingSettings: ChatClientConfig.LocalCaching?,
-            _ deletedMessageVisibility: ChatClientConfig.DeletedMessageVisibility?,
-            _ shouldShowShadowedMessages: Bool?
-        ) -> DatabaseContainer = {
-            DatabaseContainer(
-                kind: $0,
-                shouldFlushOnStart: $1,
-                shouldResetEphemeralValuesOnStart: $2,
-                localCachingSettings: $3,
-                deletedMessagesVisibility: $4,
-                shouldShowShadowedMessages: $5
-            )
+        if !config.isClientInActiveMode {
+            throw ClientError.ClientIsNotInActiveMode()
         }
-        
-        var requestEncoderBuilder: (_ baseURL: URL, _ apiKey: APIKey) -> RequestEncoder = DefaultRequestEncoder.init
-        var requestDecoderBuilder: () -> RequestDecoder = DefaultRequestDecoder.init
-        
-        var eventDecoderBuilder: () -> EventDecoder = EventDecoder.init
-        
-        var notificationCenterBuilder = EventNotificationCenter.init
-        
-        var internetConnection: (_ center: NotificationCenter, _ monitor: InternetConnectionMonitor) -> InternetConnection = {
-            InternetConnection(notificationCenter: $0, monitor: $1)
-        }
-
-        var internetMonitor: InternetConnectionMonitor {
-            if let monitor = monitor {
-                return monitor
-            } else if #available(iOS 12, *) {
-                return InternetConnection.Monitor()
-            } else {
-                return InternetConnection.LegacyMonitor()
-            }
-        }
-
-        var monitor: InternetConnectionMonitor?
-
-        var clientUpdaterBuilder = ChatClientUpdater.init
-
-        var backgroundTaskSchedulerBuilder: () -> BackgroundTaskScheduler? = {
-            if Bundle.main.isAppExtension {
-                // No background task scheduler exists for app extensions.
-                return nil
-            } else {
-                #if os(iOS)
-                return IOSBackgroundTaskScheduler()
-                #else
-                // No need for background schedulers on macOS, app continues running when inactive.
-                return nil
-                #endif
-            }
-        }
-        
-        var timerType: Timer.Type = DefaultTimer.self
-        
-        var tokenExpirationRetryStrategy: RetryStrategy = DefaultRetryStrategy()
-        
-        var connectionRecoveryHandlerBuilder: (
-            _ webSocketClient: WebSocketClient,
-            _ eventNotificationCenter: EventNotificationCenter,
-            _ syncRepository: SyncRepository,
-            _ backgroundTaskScheduler: BackgroundTaskScheduler?,
-            _ internetConnection: InternetConnection,
-            _ keepConnectionAliveInBackground: Bool
-        ) -> ConnectionRecoveryHandler = {
-            DefaultConnectionRecoveryHandler(
-                webSocketClient: $0,
-                eventNotificationCenter: $1,
-                syncRepository: $2,
-                backgroundTaskScheduler: $3,
-                internetConnection: $4,
-                reconnectionStrategy: DefaultRetryStrategy(),
-                reconnectionTimerType: DefaultTimer.self,
-                keepConnectionAliveInBackground: $5
-            )
-        }
-
-        var authenticationRepositoryBuilder: (
-            _ apiClient: APIClient,
-            _ apiClient: DatabaseContainer,
-            _ clientUpdater: ChatClientUpdater,
-            _ tokenExpirationRetryStrategy: RetryStrategy,
-            _ timerType: Timer.Type
-        ) -> AuthenticationRepository = {
-            AuthenticationRepository(
-                apiClient: $0,
-                databaseContainer: $1,
-                clientUpdater: $2,
-                tokenExpirationRetryStrategy: $3,
-                timerType: $4
-            )
-        }
-        
-        var syncRepositoryBuilder: (
-            _ config: ChatClientConfig,
-            _ activeChannelControllers: ThreadSafeWeakCollection<ChatChannelController>,
-            _ activeChannelListControllers: ThreadSafeWeakCollection<ChatChannelListController>,
-            _ offlineRequestsRepository: OfflineRequestsRepository,
-            _ eventNotificationCenter: EventNotificationCenter,
-            _ database: DatabaseContainer,
-            _ apiClient: APIClient
-        ) -> SyncRepository = {
-            SyncRepository(
-                config: $0,
-                activeChannelControllers: $1,
-                activeChannelListControllers: $2,
-                offlineRequestsRepository: $3,
-                eventNotificationCenter: $4,
-                database: $5,
-                apiClient: $6
-            )
-        }
-
-        var callRepositoryBuilder: (
-            _ apiClient: APIClient
-        ) -> CallRepository = {
-            CallRepository(apiClient: $0)
-        }
-        
-        var messageRepositoryBuilder: (
-            _ database: DatabaseContainer,
-            _ apiClient: APIClient
-        ) -> MessageRepository = {
-            MessageRepository(database: $0, apiClient: $1)
-        }
-        
-        var offlineRequestsRepositoryBuilder: (
-            _ messageRepository: MessageRepository,
-            _ database: DatabaseContainer,
-            _ apiClient: APIClient
-        ) -> OfflineRequestsRepository = {
-            OfflineRequestsRepository(
-                messageRepository: $0,
-                database: $1,
-                apiClient: $2
-            )
-        }
+        throw ClientError("Background worker of type \(T.self) is not set up")
     }
 }
 
 extension ClientError {
-    public class MissingLocalStorageURL: ClientError {
+    public final class MissingLocalStorageURL: ClientError {
         override public var localizedDescription: String { "The URL provided in ChatClientConfig is `nil`." }
     }
-    
-    public class ConnectionNotSuccessful: ClientError {
+
+    public final class ConnectionNotSuccessful: ClientError {
         override public var localizedDescription: String {
             """
             Connection to the API has failed.
@@ -687,11 +738,19 @@ extension ClientError {
             """
         }
     }
-    
-    public class MissingToken: ClientError {}
-    class WaiterTimeout: ClientError {}
 
-    public class ClientIsNotInActiveMode: ClientError {
+    public final class ReconnectionTimeout: ClientError {
+        override public var localizedDescription: String {
+            """
+            The reconnection process has timed out after surpassing the value from `ChatClientConfig.reconnectionTimeout`.
+            """
+        }
+    }
+
+    public final class MissingToken: ClientError {}
+    final class WaiterTimeout: ClientError {}
+
+    public final class ClientIsNotInActiveMode: ClientError {
         override public var localizedDescription: String {
             """
                 ChatClient is in connectionless mode, it cannot connect to websocket.
@@ -699,8 +758,8 @@ extension ClientError {
             """
         }
     }
-    
-    public class ConnectionWasNotInitiated: ClientError {
+
+    public final class ConnectionWasNotInitiated: ClientError {
         override public var localizedDescription: String {
             """
                 Before performing any other actions on chat client it's required to connect by using \
@@ -708,161 +767,20 @@ extension ClientError {
             """
         }
     }
-    
-    public class ClientHasBeenDeallocated: ClientError {
+
+    public final class ClientHasBeenDeallocated: ClientError {
         override public var localizedDescription: String {
             "ChatClient has been deallocated, make sure to keep at least one strong reference to it."
         }
     }
 
-    public class MissingTokenProvider: ClientError {
+    public final class MissingTokenProvider: ClientError {
         override public var localizedDescription: String {
             """
                 Missing token refresh provider to get a new token
                 When using expiring tokens you need to provide a way to refresh it by passing `tokenProvider` when \
                 calling `ChatClient.connectUser()`.
             """
-        }
-    }
-}
-
-/// `APIClient` listens for `WebSocketClient` connection updates so it can forward the current connection id to
-/// its `RequestEncoder`.
-extension ChatClient: ConnectionStateDelegate {
-    func webSocketClient(_ client: WebSocketClient, didUpdateConnectionState state: WebSocketConnectionState) {
-        connectionStatus = .init(webSocketConnectionState: state)
-        
-        connectionRecoveryHandler?.webSocketClient(client, didUpdateConnectionState: state)
-        
-        // We should notify waiters if connectionId was obtained (i.e. state is .connected)
-        // or for .disconnected state except for disconnect caused by an expired token
-        let shouldNotifyConnectionIdWaiters: Bool
-        let connectionId: String?
-        switch state {
-        case let .connected(connectionId: id):
-            shouldNotifyConnectionIdWaiters = true
-            connectionId = id
-        case let .disconnected(source):
-            if let error = source.serverError,
-               error.isInvalidTokenError {
-                refreshToken(completion: nil)
-                shouldNotifyConnectionIdWaiters = false
-            } else {
-                shouldNotifyConnectionIdWaiters = true
-            }
-            connectionId = nil
-        case .initialized,
-             .connecting,
-             .disconnecting,
-             .waitingForConnectionId:
-            shouldNotifyConnectionIdWaiters = false
-            connectionId = nil
-        }
-        
-        updateConnectionId(
-            connectionId: connectionId,
-            shouldNotifyWaiters: shouldNotifyConnectionIdWaiters
-        )
-    }
-
-    /// Update connectionId and notify waiters if needed
-    /// - Parameters:
-    ///   - connectionId: new connectionId (if present)
-    ///   - shouldFailWaiters: Whether it's necessary to notify waiters or not
-    private func updateConnectionId(
-        connectionId: String?,
-        shouldNotifyWaiters: Bool
-    ) {
-        var connectionIdWaiters: [String: (String?) -> Void]!
-        _connectionId.mutate { mutableConnectionId in
-            mutableConnectionId = connectionId
-            _connectionIdWaiters.mutate { _connectionIdWaiters in
-                connectionIdWaiters = _connectionIdWaiters
-                if shouldNotifyWaiters {
-                    _connectionIdWaiters.removeAll()
-                }
-            }
-        }
-        if shouldNotifyWaiters {
-            connectionIdWaiters.forEach { $0.value(connectionId) }
-        }
-    }
-}
-
-/// `Client` provides connection details for the `RequestEncoder`s it creates.
-extension ChatClient: ConnectionDetailsProviderDelegate {
-    func provideToken(timeout: TimeInterval = 10, completion: @escaping (Result<Token, Error>) -> Void) {
-        if let token = currentToken {
-            completion(.success(token))
-            return
-        }
-
-        let waiterToken = String.newUniqueId
-        let completion = addTimeout(timeout: timeout, noValueError: ClientError.MissingToken(), to: completion) { [weak self] in
-            self?.invalidateTokenWaiter(waiterToken)
-        }
-
-        _tokenWaiters.mutate {
-            $0[waiterToken] = completion
-        }
-    }
-
-    func provideConnectionId(timeout: TimeInterval = 10, completion: @escaping (Result<ConnectionId, Error>) -> Void) {
-        if let connectionId = connectionId {
-            completion(.success(connectionId))
-            return
-        } else if !config.isClientInActiveMode {
-            // We're in passive mode
-            // We will never have connectionId
-            completion(.failure(ClientError.ClientIsNotInActiveMode()))
-            return
-        }
-
-        let waiterToken = String.newUniqueId
-        let completion = addTimeout(timeout: timeout, noValueError: ClientError.MissingConnectionId(), to: completion) { [weak self] in
-            self?.invalidateConnectionIdWaiter(waiterToken)
-        }
-
-        _connectionIdWaiters.mutate {
-            $0[waiterToken] = completion
-        }
-    }
-
-    private func addTimeout<T>(
-        timeout: TimeInterval,
-        noValueError: Error,
-        to completion: @escaping (Result<T, Error>) -> Void,
-        onTimeout: @escaping () -> Void
-    ) -> (T?) -> Void {
-        var timer: TimerControl?
-        let completionCancellingTimer: (Result<T, Error>) -> Void = { result in
-            timer?.cancel()
-            completion(result)
-        }
-
-        timer = environment.timerType.schedule(timeInterval: timeout, queue: .global()) {
-            onTimeout()
-            completionCancellingTimer(.failure(ClientError.WaiterTimeout()))
-        }
-
-        return { value in
-            if let value = value {
-                completionCancellingTimer(.success(value))
-            } else {
-                completionCancellingTimer(.failure(noValueError))
-            }
-        }
-    }
-
-    func invalidateTokenWaiter(_ waiter: WaiterToken) {
-        _tokenWaiters.mutate {
-            $0[waiter] = nil
-        }
-    }
-
-    func invalidateConnectionIdWaiter(_ waiter: WaiterToken) {
-        _connectionIdWaiters.mutate {
-            $0[waiter] = nil
         }
     }
 }

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -25,10 +25,10 @@ extension MessageAttachmentPayload {
             "mime_type": "\(file.mimeType!)"
         }
         """.data(using: .utf8)!
-        
+
         return try! JSONDecoder.default.decode(MessageAttachmentPayload.self, from: data)
     }
-    
+
     var decodedImagePayload: ImageAttachmentPayload? {
         let data = try! JSONEncoder.stream.encode(payload)
         return try? JSONDecoder.stream.decode(ImageAttachmentPayload.self, from: data)
@@ -38,7 +38,7 @@ extension MessageAttachmentPayload {
         let data = try! JSONEncoder.stream.encode(payload)
         return try? JSONDecoder.stream.decode(FileAttachmentPayload.self, from: data)
     }
-    
+
     var decodedGiphyPayload: GiphyAttachmentPayload? {
         let data = try! JSONEncoder.stream.encode(payload)
         return try? JSONDecoder.stream.decode(GiphyAttachmentPayload.self, from: data)
@@ -48,7 +48,7 @@ extension MessageAttachmentPayload {
         let data = try! JSONEncoder.stream.encode(payload)
         return try? JSONDecoder.stream.decode(LinkAttachmentPayload.self, from: data)
     }
-    
+
     var decodedVideoPayload: VideoAttachmentPayload? {
         let data = try! JSONEncoder.stream.encode(payload)
         return try? JSONDecoder.stream.decode(VideoAttachmentPayload.self, from: data)
@@ -125,7 +125,7 @@ extension MessageAttachmentPayload {
             ])
         )
     }
-    
+
     static func video(
         title: String = .unique,
         videoURL: URL = URL(string: "https://getstream.io/video.mov")!,
@@ -136,6 +136,38 @@ extension MessageAttachmentPayload {
             payload: .dictionary([
                 "title": .string(title),
                 "asset_url": .string(videoURL.absoluteString),
+                "mime_type": .string(file.mimeType!),
+                "file_size": .string("\(file.size)")
+            ])
+        )
+    }
+
+    static func audio(
+        title: String = .unique,
+        audioURL: URL = URL(string: "https://getstream.io/audio.mp3")!,
+        file: AttachmentFile = .init(type: .mov, size: 1024, mimeType: "audio/mp3")
+    ) -> Self {
+        .init(
+            type: .audio,
+            payload: .dictionary([
+                "title": .string(title),
+                "asset_url": .string(audioURL.absoluteString),
+                "mime_type": .string(file.mimeType!),
+                "file_size": .string("\(file.size)")
+            ])
+        )
+    }
+
+    static func voiceRecording(
+        title: String = .unique,
+        audioURL: URL = URL(string: "https://getstream.io/recording.aac")!,
+        file: AttachmentFile = .init(type: .mov, size: 1024, mimeType: "audio/aac")
+    ) -> Self {
+        .init(
+            type: .voiceRecording,
+            payload: .dictionary([
+                "title": .string(title),
+                "asset_url": .string(audioURL.absoluteString),
                 "mime_type": .string(file.mimeType!),
                 "file_size": .string("\(file.size)")
             ])

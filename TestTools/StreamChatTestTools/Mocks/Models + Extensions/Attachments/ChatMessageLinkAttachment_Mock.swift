@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
@@ -29,6 +29,7 @@ extension ChatMessageLinkAttachment {
                 assetURL: assetURL,
                 previewURL: previewURL
             ),
+            downloadingState: nil,
             uploadingState: nil
         )
     }

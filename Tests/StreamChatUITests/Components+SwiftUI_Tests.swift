@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChatTestTools
@@ -7,7 +7,6 @@
 import SwiftUI
 import XCTest
 
-@available(iOS 13, *)
 final class Components_SwiftUI_Tests: iOS13TestCase {
     func test_correctInstanceIsUsed() {
         class TestView: UIView, MaskProviding {

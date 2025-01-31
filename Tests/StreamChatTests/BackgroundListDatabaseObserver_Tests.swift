@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
@@ -26,9 +26,10 @@ final class BackgroundListDatabaseObserver_Tests: XCTestCase {
         )
 
         observer = .init(
-            context: database.backgroundReadOnlyContext,
+            database: database,
             fetchRequest: fetchRequest,
             itemCreator: { $0.uniqueValue },
+            sorting: [],
             fetchedResultsControllerType: TestFetchedResultsController.self
         )
     }
@@ -53,22 +54,15 @@ final class BackgroundListDatabaseObserver_Tests: XCTestCase {
     }
 
     func test_changeAggregatorSetup() throws {
-        // Start observing to ensure everything is set up
-        try startObservingAndWaitForInitialResults()
-
-        let onDidChangeExpectation = expectation(description: "onDidChange")
+        let expectation2 = expectation(description: "onDidChange is called")
         observer.onDidChange = { _ in
-            onDidChangeExpectation.fulfill()
+            expectation2.fulfill()
         }
 
-        let onWillChangeExpectation = expectation(description: "onWillChange")
-        observer.onWillChange = { onWillChangeExpectation.fulfill() }
+        // Start observing to ensure everything is set up
+        try observer.startObserving()
 
-        // Simulate callbacks from the aggregator
-        observer.changeAggregator.onWillChange?()
-        observer.changeAggregator.onDidChange?([])
-
-        waitForExpectations(timeout: 0.1)
+        waitForExpectations(timeout: defaultTimeout)
 
         XCTAssert(observer.frc.delegate === observer.changeAggregator)
     }
@@ -79,6 +73,7 @@ final class BackgroundListDatabaseObserver_Tests: XCTestCase {
             TestManagedObject(context: database.viewContext),
             TestManagedObject(context: database.viewContext)
         ]
+
         testFRC.test_fetchedObjects = reference1
 
         // Call startObserving to set everything up
@@ -95,9 +90,7 @@ final class BackgroundListDatabaseObserver_Tests: XCTestCase {
         XCTAssertEqual(Array(observer.items), reference1.map(\.uniqueValue))
 
         // Simulate the change aggregator callback and check the items get updated
-        observer.changeAggregator.onDidChange?([])
-        try waitForOnDidChange()
-        XCTAssertEqual(Array(observer.items), reference2.map(\.uniqueValue))
+        assertItemsAfterUpdate(reference2.map(\.uniqueValue))
     }
 
     func test_startObserving_startsFRC() throws {
@@ -115,28 +108,24 @@ final class BackgroundListDatabaseObserver_Tests: XCTestCase {
         XCTAssertFalse(testFRC.test_performFetchCalled)
     }
 
-    func test_updateNotReported_whenSamePropertyAssigned() throws {
+    func test_updateStillReported_whenSamePropertyAssigned() throws {
         // For this test, we need an actual NSFetchedResultsController, not the test one
-        let observer = BackgroundListDatabaseObserver<String, TestManagedObject>(
-            context: database.backgroundReadOnlyContext,
+        observer = BackgroundListDatabaseObserver<String, TestManagedObject>(
+            database: database,
             fetchRequest: fetchRequest,
-            itemCreator: { $0.testId }
+            itemCreator: { $0.testId },
+            sorting: []
         )
 
-        // Call startObserving to set everything up
-        let startObservingDidChangeExpectation = expectation(description: "startObservingDidChange")
-        observer.onDidChange = { _ in
-            startObservingDidChangeExpectation.fulfill()
-        }
-        // We wait for the startObserving to call onDidChange
-        try observer.startObserving()
-        waitForExpectations(timeout: 0.1)
+        // We call startObserving
+        try startObservingAndWaitForInitialResults()
 
         let onDidChangeExpectation = expectation(description: "onDidChange")
+        onDidChangeExpectation.expectedFulfillmentCount = 2
 
-        var receivedChangesId: [ListChange<String>]?
+        var receivedChanges: [ListChange<String>] = []
         observer.onDidChange = {
-            receivedChangesId = $0
+            receivedChanges.append(contentsOf: $0)
             onDidChangeExpectation.fulfill()
         }
 
@@ -150,69 +139,117 @@ final class BackgroundListDatabaseObserver_Tests: XCTestCase {
             item.testValue = testValue
         }
 
-        waitForExpectations(timeout: 0.1)
-
-        XCTAssertEqual(receivedChangesId?.first?.item, testValue)
-
-        let oldChanges = receivedChangesId
-
         // Assign the same testValue to the same entity
         try database.writeSynchronously { _ in
             item.testValue = testValue
         }
 
-        // Assert no new change is reported
-        AssertAsync.staysEqual(receivedChangesId, oldChanges)
+        waitForExpectations(timeout: defaultTimeout)
+
+        XCTAssertEqual(receivedChanges.count, 2)
+        XCTAssertEqual(receivedChanges.first?.isInsertion, true)
+        XCTAssertEqual(receivedChanges.last?.isUpdate, true)
     }
-
-    func test_allItemsAreRemoved_whenDatabaseContainerRemovesAllData() throws {
-        // Simulate objects fetched by FRC
-        let objects = [
-            TestManagedObject(context: database.viewContext),
-            TestManagedObject(context: database.viewContext)
-        ]
-        testFRC.test_fetchedObjects = objects
-
-        // Call startObserving to set everything up
-        try startObservingAndWaitForInitialResults()
-        XCTAssertEqual(Array(observer.items), objects.map(\.uniqueValue))
-
-        // Reset test FRC's `performFetch` called flag
-        testFRC.test_performFetchCalled = false
-
-        // Simulate all entities are removed
-        testFRC.test_fetchedObjects = []
-
-        // Simulate `WillRemoveAllDataNotification` is posted by the observed context
-        NotificationCenter.default
-            .post(name: DatabaseContainer.WillRemoveAllDataNotification, object: observer.frc.managedObjectContext)
-
-        try waitForOnDidChange()
-        XCTAssertEqual(observer.items.count, 0)
-
-        // Simulate `DidRemoveAllDataNotification` is posted by the observed context
-        NotificationCenter.default
-            .post(name: DatabaseContainer.DidRemoveAllDataNotification, object: observer.frc.managedObjectContext)
-
-        try waitForOnDidChange()
-
-        // Assert `performFetch` was called again on the FRC
-        XCTAssertTrue(testFRC.test_performFetchCalled)
+    
+    func test_accessingItemsBeforeInitialFetchHasEnded() throws {
+        try database.writeSynchronously { session in
+            let context = try XCTUnwrap(session as? NSManagedObjectContext)
+            let item = try XCTUnwrap(NSEntityDescription.insertNewObject(forEntityName: "TestManagedObject", into: context) as? TestManagedObject)
+            item.testId = "1"
+            item.testValue = "testValue1"
+        }
+        
+        observer = BackgroundListDatabaseObserver<String, TestManagedObject>(
+            database: database,
+            fetchRequest: fetchRequest,
+            itemCreator: { $0.testId },
+            sorting: []
+        )
+        try observer.startObserving()
+        
+        let itemIds = observer.items
+        XCTAssertEqual(["1"], itemIds)
     }
+    
+    func test_accessingItemsConcurrentlyWhileInitialFetchIsRunning() throws {
+        let expectedIds = (0..<5).map { "\($0)" }
+        try database.writeSynchronously { session in
+            let context = try XCTUnwrap(session as? NSManagedObjectContext)
+            for itemId in expectedIds {
+                let item = try XCTUnwrap(NSEntityDescription.insertNewObject(forEntityName: "TestManagedObject", into: context) as? TestManagedObject)
+                item.testId = itemId
+                item.testValue = "testValue_" + itemId
+            }
+        }
+        
+        let initialFinishedExpectation = XCTestExpectation(description: "Initial")
+        observer = BackgroundListDatabaseObserver<String, TestManagedObject>(
+            database: database,
+            fetchRequest: fetchRequest,
+            itemCreator: { $0.testId },
+            sorting: []
+        )
+        observer.onDidChange = { [initialFinishedExpectation] _ in
+            initialFinishedExpectation.fulfill()
+        }
+        try observer.startObserving()
+        
+        DispatchQueue.concurrentPerform(iterations: 1000) { _ in
+            XCTAssertEqual(expectedIds, observer.items.map { $0 })
+        }
+        wait(for: [initialFinishedExpectation], timeout: defaultTimeout)
+        XCTAssertEqual(expectedIds, observer.items.map { $0 })
+    }
+    
+    func test_accessingItems_whenObservationStartsWithEmptyDBAndWriteHappens_thenWrittenDataIsReturned() throws {
+        let initialFinishedExpectation = XCTestExpectation(description: "Initial")
+        observer = BackgroundListDatabaseObserver<String, TestManagedObject>(
+            database: database,
+            fetchRequest: fetchRequest,
+            itemCreator: { $0.testId },
+            sorting: []
+        )
+        observer.onDidChange = { _ in
+            initialFinishedExpectation.fulfill()
+        }
+        try observer.startObserving()
+        // Immediate write after starting to observe (race between initial load and DB change)
+        try database.writeSynchronously { session in
+            let context = try XCTUnwrap(session as? NSManagedObjectContext)
+            let item = try XCTUnwrap(NSEntityDescription.insertNewObject(forEntityName: "TestManagedObject", into: context) as? TestManagedObject)
+            item.testId = "1"
+            item.testValue = "testValue1"
+        }
+        XCTAssertEqual(["1"], observer.items.map { $0 })
+        wait(for: [initialFinishedExpectation], timeout: defaultTimeout)
+        XCTAssertEqual(["1"], observer.items.map { $0 })
+    }
+    
+    // MARK: -
 
     private func startObservingAndWaitForInitialResults() throws {
-        // Start observing to ensure everything is set up
-        try observer.startObserving()
-
-        try waitForOnDidChange()
+        try waitForItemsUpdate {
+            // Start observing to ensure everything is set up
+            try observer.startObserving()
+        }
     }
 
-    private func waitForOnDidChange() throws {
-        let startObservingDidChangeExpectation = expectation(description: "startObservingDidChange")
-        observer.onDidChange = { _ in
-            startObservingDidChangeExpectation.fulfill()
+    private func assertItemsAfterUpdate(_ items: [String], file: StaticString = #file, line: UInt = #line) {
+        try? waitForItemsUpdate {
+            let changeAggregator = observer.frc.delegate as? ListChangeAggregator<TestManagedObject, String>
+            changeAggregator?.onDidChange?([])
         }
-        // We wait for the startObserving to call onDidChange
-        waitForExpectations(timeout: 0.1)
+        let sutItems = Array(observer.items)
+        XCTAssertEqual(sutItems, items, file: file, line: line)
+    }
+
+    private func waitForItemsUpdate(block: () throws -> Void) throws {
+        let expectation = self.expectation(description: "Get items")
+        observer.onDidChange = { _ in
+            expectation.fulfill()
+        }
+
+        try block()
+        waitForExpectations(timeout: defaultTimeout)
     }
 }

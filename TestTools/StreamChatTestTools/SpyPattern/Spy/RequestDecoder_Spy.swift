@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -7,13 +7,14 @@ import Foundation
 import XCTest
 
 final class RequestDecoder_Spy: RequestDecoder, Spy {
-    var recordedFunctions: [String] = []
+    let spyState = SpyState()
     var decodeRequestResponse: Result<Any, Error>?
     var decodeRequestDelay: TimeInterval?
 
     var decodeRequestResponse_data: Data?
     var decodeRequestResponse_response: HTTPURLResponse?
     var decodeRequestResponse_error: Error?
+    var onDecodeRequestResponseCall: (() -> Void)?
 
     func decodeRequestResponse<ResponseType>(
         data: Data?,
@@ -21,6 +22,7 @@ final class RequestDecoder_Spy: RequestDecoder, Spy {
         error: Error?
     ) throws -> ResponseType where ResponseType: Decodable {
         record()
+        onDecodeRequestResponseCall?()
         decodeRequestResponse_data = data
         decodeRequestResponse_response = response as? HTTPURLResponse
         decodeRequestResponse_error = error

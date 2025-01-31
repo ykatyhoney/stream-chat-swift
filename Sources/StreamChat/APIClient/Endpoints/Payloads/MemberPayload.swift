@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -8,13 +8,13 @@ struct MemberContainerPayload: Decodable {
     let member: MemberPayload?
     let invite: MemberInvitePayload?
     let memberRole: MemberRolePayload?
-    
+
     init(from decoder: Decoder) throws {
         member = try? .init(from: decoder)
         invite = try? .init(from: decoder)
         memberRole = try? .init(from: decoder)
     }
-    
+
     init(
         member: MemberPayload?,
         invite: MemberInvitePayload?,
@@ -27,7 +27,7 @@ struct MemberContainerPayload: Decodable {
 }
 
 struct MemberPayload: Decodable {
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: String, CodingKey, CaseIterable {
         case user
         case userId = "user_id"
         case role = "channel_role"
@@ -39,6 +39,9 @@ struct MemberPayload: Decodable {
         case isInvited = "invited"
         case inviteAcceptedAt = "invite_accepted_at"
         case inviteRejectedAt = "invite_rejected_at"
+        case notificationsMuted = "notifications_muted"
+        case archivedAt = "archived_at"
+        case pinnedAt = "pinned_at"
     }
 
     let userId: String
@@ -62,7 +65,17 @@ struct MemberPayload: Decodable {
     let inviteAcceptedAt: Date?
     /// A date when an invited was rejected.
     let inviteRejectedAt: Date?
-    
+    /// A date when the channel was archived.
+    let archivedAt: Date?
+    /// A date when the channel was pinned.
+    let pinnedAt: Date?
+
+    /// A boolean value that returns whether the user has muted the channel or not.
+    let notificationsMuted: Bool
+
+    /// Extra data associated with the member.
+    let extraData: [String: RawJSON]?
+
     init(
         user: UserPayload?,
         userId: String,
@@ -74,7 +87,11 @@ struct MemberPayload: Decodable {
         isShadowBanned: Bool? = nil,
         isInvited: Bool? = nil,
         inviteAcceptedAt: Date? = nil,
-        inviteRejectedAt: Date? = nil
+        inviteRejectedAt: Date? = nil,
+        archivedAt: Date? = nil,
+        pinnedAt: Date? = nil,
+        notificationsMuted: Bool = false,
+        extraData: [String: RawJSON]? = nil
     ) {
         self.user = user
         self.userId = userId
@@ -87,6 +104,10 @@ struct MemberPayload: Decodable {
         self.isInvited = isInvited
         self.inviteAcceptedAt = inviteAcceptedAt
         self.inviteRejectedAt = inviteRejectedAt
+        self.archivedAt = archivedAt
+        self.pinnedAt = pinnedAt
+        self.notificationsMuted = notificationsMuted
+        self.extraData = extraData
     }
 
     init(from decoder: Decoder) throws {
@@ -101,11 +122,22 @@ struct MemberPayload: Decodable {
         isInvited = try container.decodeIfPresent(Bool.self, forKey: .isInvited)
         inviteAcceptedAt = try container.decodeIfPresent(Date.self, forKey: .inviteAcceptedAt)
         inviteRejectedAt = try container.decodeIfPresent(Date.self, forKey: .inviteRejectedAt)
+        archivedAt = try container.decodeIfPresent(Date.self, forKey: .archivedAt)
+        pinnedAt = try container.decodeIfPresent(Date.self, forKey: .pinnedAt)
+        notificationsMuted = try container.decodeIfPresent(Bool.self, forKey: .notificationsMuted) ?? false
 
         if let user = user {
             userId = user.id
         } else {
             userId = try container.decode(String.self, forKey: .userId)
+        }
+
+        do {
+            var payload = try [String: RawJSON](from: decoder)
+            payload.removeValues(forKeys: CodingKeys.allCases.map(\.rawValue))
+            extraData = payload
+        } catch {
+            extraData = [:]
         }
     }
 }
@@ -117,7 +149,7 @@ struct MemberInvitePayload: Decodable {
         case inviteAcceptedAt = "invite_accepted_at"
         case inviteRejectedAt = "invite_rejected_at"
     }
-    
+
     let role: MemberRole
     /// Checks if he was invited.
     let isInvited: Bool?

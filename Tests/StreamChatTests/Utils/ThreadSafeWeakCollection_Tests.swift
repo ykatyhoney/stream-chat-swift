@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -14,7 +14,9 @@ final class ThreadSafeWeakCollection_Tests: XCTestCase {
             _ = collection.allObjects
         }
         DispatchQueue.concurrentPerform(iterations: 100) { _ in
-            collection.add(NSObject())
+            let object = NSObject()
+            collection.add(object)
+            collection.remove(object)
         }
         DispatchQueue.concurrentPerform(iterations: 100) { _ in
             collection.removeAllObjects()

@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - 'main'
+
   release:
     types: [published]
 
@@ -14,14 +15,15 @@ env:
 
 jobs:
   deploy:
-    runs-on: macos-12
+    runs-on: macos-14
     steps:
-    - name: Install Bot SSH Key
+    - name: Connect Bot
       uses: webfactory/ssh-agent@v0.7.0
       with:
         ssh-private-key: ${{ secrets.BOT_SSH_PRIVATE_KEY }}
-    - uses: actions/checkout@v3.1.0
-    - uses: ./.github/actions/bootstrap
+    - uses: actions/checkout@v4.1.1
+    - uses: ./.github/actions/ruby-cache
+    - uses: ./.github/actions/xcode-cache
     - name: Deploy Demo app
       env:
         MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}

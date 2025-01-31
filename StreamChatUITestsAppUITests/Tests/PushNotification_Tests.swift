@@ -1,36 +1,37 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import XCTest
 
 // Requires running a standalone Sinatra server
 final class PushNotification_Tests: StreamTestCase {
-    
+
     let sender = "Han Solo"
     let message = "How are you? 🙂"
-    
+
     override func setUpWithError() throws {
         try XCTSkipIf(ProcessInfo().operatingSystemVersion.majorVersion < 14,
                       "Push notifications infra does not work on iOS < 14")
         try super.setUpWithError()
+        assertMockServer()
     }
-    
+
     override func tearDownWithError() throws {
         if ProcessInfo().operatingSystemVersion.majorVersion >= 14 {
             try super.tearDownWithError()
         }
     }
-    
+
     func test_pushNotificationFromMessageList() throws {
         linkToScenario(withId: 95)
-        
+
         GIVEN("user goes to message list") {
             userRobot.login().openChannel()
         }
         checkHappyPath(message: message, sender: sender)
     }
-    
+
     func test_pushNotificationFromChannelList() throws {
         linkToScenario(withId: 291)
 
@@ -42,18 +43,18 @@ final class PushNotification_Tests: StreamTestCase {
         }
         checkHappyPath(message: message, sender: sender)
     }
-    
+
     func test_pushNotification_optionalValuesEqualToNil() throws {
         linkToScenario(withId: 27)
 
         mockPushNotification(body: message)
-        
+
         GIVEN("user goes to message list") {
             userRobot.login().openChannel()
         }
         checkHappyPath(message: message, sender: app.label.uppercased())
     }
-    
+
     func test_pushNotification_optionalValuesAreEmpty() throws {
         linkToScenario(withId: 293)
 
@@ -69,13 +70,13 @@ final class PushNotification_Tests: StreamTestCase {
             messageId: "",
             cid: ""
          )
-        
+
         GIVEN("user goes to message list") {
             userRobot.login().openChannel()
         }
         checkHappyPath(message: message, sender: app.label.uppercased())
     }
-    
+
     func test_pushNotification_optionalValuesContainIncorrectType() throws {
         linkToScenario(withId: 294)
 
@@ -91,13 +92,13 @@ final class PushNotification_Tests: StreamTestCase {
             messageId: 42,
             cid: 42
         )
-        
+
         GIVEN("user goes to message list") {
             userRobot.login().openChannel()
         }
         checkHappyPath(message: message, sender: app.label.uppercased())
     }
-    
+
     func test_pushNotification_optionalValuesContainIncorrectData() throws {
         linkToScenario(withId: 295)
 
@@ -113,13 +114,13 @@ final class PushNotification_Tests: StreamTestCase {
             messageId: "test",
             cid: "test"
         )
-        
+
         GIVEN("user goes to message list") {
             userRobot.login().openChannel()
         }
         checkHappyPath(message: message, sender: app.label.uppercased())
     }
-    
+
     func test_pushNotification_requiredValuesAreInvalid() throws {
         linkToScenario(withId: 296)
 
@@ -129,7 +130,7 @@ final class PushNotification_Tests: StreamTestCase {
         AND("user goes to background") {
             deviceRobot.moveApplication(to: .background)
         }
-        
+
         mockPushNotification(body: nil)
         WHEN("participant sends a message (push body param is nil)") {
             participantRobot.wait(2).sendMessage("\(message)_0",
@@ -139,7 +140,7 @@ final class PushNotification_Tests: StreamTestCase {
         THEN("user does not receive a push notification") {
             userRobot.assertPushNotificationDoesNotAppear()
         }
-        
+
         mockPushNotification(body: "")
         WHEN("participant sends a message (push body param is empty)") {
             participantRobot.sendMessage("\(message)_1",
@@ -149,7 +150,7 @@ final class PushNotification_Tests: StreamTestCase {
         THEN("user does not receive a push notification") {
             userRobot.assertPushNotificationDoesNotAppear()
         }
-        
+
         mockPushNotification(body: 42)
         WHEN("participant sends a message (push body param contains incorrect type)") {
             participantRobot.sendMessage("\(message)_2",
@@ -159,7 +160,7 @@ final class PushNotification_Tests: StreamTestCase {
         THEN("user does not receive a push notification") {
             userRobot.assertPushNotificationDoesNotAppear()
         }
-        
+
         WHEN("user comes back to foreground") {
             deviceRobot.moveApplication(to: .foreground)
         }
@@ -170,10 +171,10 @@ final class PushNotification_Tests: StreamTestCase {
                 .assertMessage("\(message)_2", at: 0)
         }
     }
-    
+
     func test_appIconBadge() throws {
         linkToScenario(withId: 292)
-        
+
         throw XCTSkip("[CIS-2164] The test app is not yet ready for this test")
 
         GIVEN("user goes to message list") {
@@ -206,7 +207,7 @@ final class PushNotification_Tests: StreamTestCase {
             userRobot.assertAppIconBadge(shouldBeVisible: false)
         }
     }
-    
+
     func mockPushNotification(
         body: Any?,
         title: Any? = nil,
@@ -220,7 +221,7 @@ final class PushNotification_Tests: StreamTestCase {
         cid: Any? = nil
     ) {
         var json = TestData.toJson(.pushNotification)
-        
+
         var aps = json[APNSKey.aps] as? [String: Any]
         var alert = aps?[APNSKey.alert] as? [String: Any]
         alert?[APNSKey.title] = title
@@ -230,7 +231,7 @@ final class PushNotification_Tests: StreamTestCase {
         aps?[APNSKey.mutableContent] = mutableContent
         aps?[APNSKey.category] = category
         json[APNSKey.aps] = aps
-        
+
         var stream = json[APNSKey.stream] as? [String: Any]
         stream?[APNSKey.sender] = sender
         stream?[APNSKey.type] = type
@@ -238,10 +239,10 @@ final class PushNotification_Tests: StreamTestCase {
         stream?[APNSKey.messageId] = messageId
         stream?[APNSKey.cid] = cid
         json[APNSKey.stream] = stream
-        
+
         server.pushNotificationPayload = json
     }
-    
+
     func checkHappyPath(message: String, sender: String) {
         WHEN("user goes to background") {
             deviceRobot.moveApplication(to: .background)

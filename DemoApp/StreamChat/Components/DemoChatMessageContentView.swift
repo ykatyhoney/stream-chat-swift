@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -20,7 +20,7 @@ final class DemoChatMessageContentView: ChatMessageContentView {
             bubbleThreadFootnoteContainer.insertArrangedSubview(pinInfoLabel!, at: 0)
         }
     }
-    
+
     override func updateContent() {
         super.updateContent()
 
@@ -29,16 +29,21 @@ final class DemoChatMessageContentView: ChatMessageContentView {
             textView?.text = "This message is from a shadow banned user"
         }
 
-        if let translations = content?.translations, let turkishTranslation = translations[.turkish] {
+        /// If automatic translation is added, do not show manual translation
+        /// (Demo App only feature to test LLC manual translation)
+        if layoutOptions?.contains(.translation) == false,
+           content?.isDeleted == false,
+           let translations = content?.translations,
+           let turkishTranslation = translations[.turkish] {
             textView?.text = turkishTranslation
             timestampLabel?.text?.append(" - Translated to Turkish")
         }
-        
+
         if content?.isPinned == true, let pinInfoLabel = pinInfoLabel {
             pinInfoLabel.text = "📌 Pinned"
             if let pinDetails = content?.pinDetails {
-                let pinnedByName = content?.isSentByCurrentUser == true
-                    ? (content?.author.id == pinDetails.pinnedBy.id ? "You" : pinDetails.pinnedBy.name ?? pinDetails.pinnedBy.id)
+                let pinnedByName = pinDetails.pinnedBy.id == UserDefaults.shared.currentUserId
+                    ? "You"
                     : pinDetails.pinnedBy.name ?? pinDetails.pinnedBy.id
                 pinInfoLabel.text?.append(" by \(pinnedByName)")
             }

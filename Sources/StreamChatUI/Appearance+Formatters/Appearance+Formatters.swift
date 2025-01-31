@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -7,8 +7,17 @@ import StreamChat
 
 public extension Appearance {
     struct Formatters {
-        /// A formatter that converts the message date separator used in the message list to textual representation.
+        /// A formatter that converts the message to textual representation in the message list.
         public var messageTimestamp: MessageTimestampFormatter = DefaultMessageTimestampFormatter()
+
+        /// A formatter that converts the poll vote creation date to a textual representation.
+        public var pollVoteTimestamp: PollTimestampFormatter = DefaultPollTimestampFormatter()
+
+        /// A formatter that converts the message to textual representation in the channel list.
+        public var channelListMessageTimestamp: MessageTimestampFormatter = ChannelListMessageTimestampFormatter()
+
+        /// A formatter that converts the message to textual representation in the thread list. By default, it uses the same format of the channel list.
+        public var threadListMessageTimestamp: MessageTimestampFormatter = ChannelListMessageTimestampFormatter()
 
         /// A formatter that converts the message date separator to textual representation.
         /// This formatter is used to display the message date between each group of messages
@@ -26,10 +35,16 @@ public extension Appearance {
 
         /// A formatter that generates a name for the given channel.
         public var channelName: ChannelNameFormatter = DefaultChannelNameFormatter()
-        
+
         /// A formatter used for text Markdown
         public var markdownFormatter: MarkdownFormatter = DefaultMarkdownFormatter()
-        
+
+        /// A formatter that converts an audio playback rate to textual representation.
+        public var audioPlaybackRateFormatter: AudioPlaybackRateFormatter = DefaultAudioPlaybackRateFormatter()
+
+        /// A formatter that provides a name for a recording based on its position in a list of recordings.
+        public var audioRecordingNameFormatter: AudioRecordingNameFormatter = DefaultAudioRecordingNameFormatter()
+
         /// A boolean value that determines whether Markdown is active for messages to be formatted.
         public var isMarkdownEnabled = true
     }

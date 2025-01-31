@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
@@ -16,7 +16,7 @@ final class MessageReactionDTO: NSManagedObject {
     @NSManaged var createdAt: DBDate?
     @NSManaged var updatedAt: DBDate?
     @NSManaged var extraData: Data?
-    
+
     @NSManaged var message: MessageDTO
     @NSManaged var user: UserDTO
 
@@ -33,6 +33,28 @@ final class MessageReactionDTO: NSManagedObject {
 }
 
 extension MessageReactionDTO {
+    static func reactionListFetchRequest(query: ReactionListQuery) -> NSFetchRequest<MessageReactionDTO> {
+        let request = NSFetchRequest<MessageReactionDTO>(entityName: MessageReactionDTO.entityName)
+        MessageReactionDTO.applyPrefetchingState(to: request)
+
+        // Fetch results controller requires at least one sorting descriptor.
+        // At the moment, we do not allow changing the query sorting.
+        request.sortDescriptors = [.init(key: #keyPath(MessageReactionDTO.createdAt), ascending: false)]
+        
+        let messageIdPredicate = NSPredicate(format: "message.id == %@", query.messageId)
+        var subpredicates = [messageIdPredicate]
+                
+        // If a filter exists, use is for the predicate. Otherwise, `nil` filter matches all reactions.
+        if let filterHash = query.filter?.filterHash {
+            let filterPredicate = NSPredicate(format: "ANY queries.filterHash == %@", filterHash)
+            subpredicates.append(filterPredicate)
+        }
+        
+        request.predicate = NSCompoundPredicate(type: .and, subpredicates: subpredicates)
+
+        return request
+    }
+
     static func load(
         userId: String,
         messageId: MessageId,
@@ -62,13 +84,14 @@ extension MessageReactionDTO {
         }
 
         let request = NSFetchRequest<MessageReactionDTO>(entityName: MessageReactionDTO.entityName)
+        MessageReactionDTO.applyPrefetchingState(to: request)
         request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
             NSPredicate(format: "id IN %@", ids),
             Self.notLocallyDeletedPredicates
         ])
         return load(by: request, context: context)
     }
-    
+
     static func loadOrCreate(
         message: MessageDTO,
         type: MessageReactionType,
@@ -93,6 +116,18 @@ extension MessageReactionDTO {
         new.user = user
         return new
     }
+    
+    static func reactionsFetchRequest(
+        for messageId: MessageId,
+        sort: [NSSortDescriptor]
+    ) -> NSFetchRequest<MessageReactionDTO> {
+        let request = NSFetchRequest<MessageReactionDTO>(entityName: MessageReactionDTO.entityName)
+        MessageReactionDTO.applyPrefetchingState(to: request)
+        request.sortDescriptors = sort
+        request.predicate = NSPredicate(format: "message.id == %@", messageId)
+        request.fetchBatchSize = 30
+        return request
+    }
 }
 
 extension NSManagedObjectContext {
@@ -101,22 +136,29 @@ extension NSManagedObjectContext {
     }
 
     @discardableResult
-    func saveReactions(payload: MessageReactionsPayload) -> [MessageReactionDTO] {
+    func saveReactions(payload: MessageReactionsPayload, query: ReactionListQuery?) -> [MessageReactionDTO] {
+        let isFirstPage = query?.pagination.offset == 0
+        if let filterHash = query?.queryHash, isFirstPage {
+            let queryDTO = ReactionListQueryDTO.load(filterHash: filterHash, context: self)
+            queryDTO?.reactions = []
+        }
+
         let cache = payload.getPayloadToModelIdMappings(context: self)
         return payload.reactions.compactMapLoggingError {
-            try saveReaction(payload: $0, cache: cache)
+            try saveReaction(payload: $0, query: query, cache: cache)
         }
     }
 
     @discardableResult
     func saveReaction(
         payload: MessageReactionPayload,
+        query: ReactionListQuery?,
         cache: PreWarmedCache?
     ) throws -> MessageReactionDTO {
         guard let messageDTO = message(id: payload.messageId) else {
             throw ClientError.MessageDoesNotExist(messageId: payload.messageId)
         }
-        
+
         let dto = MessageReactionDTO.loadOrCreate(
             message: messageDTO,
             type: payload.type,
@@ -131,12 +173,23 @@ extension NSManagedObjectContext {
         dto.extraData = try JSONEncoder.default.encode(payload.extraData)
         dto.localState = nil
         dto.version = nil
-        
+
+        if let query = query {
+            let queryDTO = try saveQuery(query: query)
+            queryDTO?.reactions.insert(dto)
+        }
+
         return dto
     }
 
     func delete(reaction: MessageReactionDTO) {
         delete(reaction)
+    }
+}
+
+extension MessageReactionDTO {
+    override class func prefetchedRelationshipKeyPaths() -> [String] {
+        [KeyPath.string(\MessageReactionDTO.user)]
     }
 }
 
@@ -152,27 +205,24 @@ extension MessageReactionDTO {
 
     /// Snapshots the current state of `MessageReactionDTO` and returns an immutable model object from it.
     func asModel() throws -> ChatMessageReaction {
-        guard isValid else { throw InvalidModel(self) }
-        let decodedExtraData: [String: RawJSON]
+        try isNotDeleted()
         
-        if let extraData = self.extraData, !extraData.isEmpty {
-            do {
-                decodedExtraData = try JSONDecoder.default.decode([String: RawJSON].self, from: extraData)
-            } catch {
-                log.error("Failed decoding saved extra data with error: \(error)")
-                decodedExtraData = [:]
-            }
-        } else {
-            decodedExtraData = [:]
+        let extraData: [String: RawJSON]
+        do {
+            extraData = try JSONDecoder.stream.decodeRawJSON(from: self.extraData)
+        } catch {
+            log.error("Failed decoding saved extra data with error: \(error)")
+            extraData = [:]
         }
 
         return try .init(
+            id: id,
             type: .init(rawValue: type),
             score: Int(score),
             createdAt: createdAt?.bridgeDate ?? .init(),
             updatedAt: updatedAt?.bridgeDate ?? .init(),
             author: user.asModel(),
-            extraData: decodedExtraData
+            extraData: extraData
         )
     }
 }

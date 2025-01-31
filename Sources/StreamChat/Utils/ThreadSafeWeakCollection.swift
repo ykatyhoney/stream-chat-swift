@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -24,9 +24,15 @@ final class ThreadSafeWeakCollection<T: AnyObject> {
         return count
     }
 
-    func add(_ object: T?) {
+    func add(_ object: T) {
         queue.async(flags: .barrier) {
             self.storage.add(object)
+        }
+    }
+
+    func remove(_ object: T) {
+        queue.async(flags: .barrier) {
+            self.storage.remove(object)
         }
     }
 

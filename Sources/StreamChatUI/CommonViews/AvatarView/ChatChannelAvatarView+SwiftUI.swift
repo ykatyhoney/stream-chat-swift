@@ -1,18 +1,16 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Combine
 import StreamChat
 import SwiftUI
 
-@available(iOS 13.0, *)
 /// Protocol of `ChatChannelAvatarView` wrapper for use in SwiftUI.
 public protocol ChatChannelAvatarViewSwiftUIView: View {
     init(dataSource: ChatChannelAvatarView.ObservedObject<Self>)
 }
 
-@available(iOS 13.0, *)
 extension ChatChannelAvatarView {
     /// Data source of `ChatChannelAvatarView` represented as `ObservedObject`.
     public typealias ObservedObject<Content: SwiftUIView> = SwiftUIWrapper<Content>
@@ -23,14 +21,14 @@ extension ChatChannelAvatarView {
     /// SwiftUI wrapper of `ChatChannelAvatarView`.
     public class SwiftUIWrapper<Content: SwiftUIView>: ChatChannelAvatarView, ObservableObject {
         var hostingController: UIViewController?
-        
+
         override public var intrinsicContentSize: CGSize {
             hostingController?.view.intrinsicContentSize ?? super.intrinsicContentSize
         }
 
         override public func setUp() {
             super.setUp()
-    
+
             let view = Content(dataSource: self)
                 .environmentObject(components.asObservableObject)
                 .environmentObject(appearance.asObservableObject)

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -7,22 +7,13 @@ import StreamChatUI
 import UIKit
 
 final class SlackReactionsItemView: UICollectionViewCell {
-    var emojis: [String: String] = [
-        "love": "❤️",
-        "haha": "😂",
-        "like": "👍",
-        "sad": "😔",
-        "wow": "🤯"
-    ]
-
     var reaction: ChatMessageReactionData? {
         didSet {
             guard let reaction = reaction else {
                 return
             }
 
-            let emoji = emojis[reaction.type.rawValue] ?? "🙂"
-
+            let emoji = reaction.type.toEmoji()
             textLabel.text = "\(emoji) \(reaction.score)"
             textLabel.textColor = reaction.isChosenByCurrentUser ? .blue : .gray
         }

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -14,22 +14,31 @@ public typealias ChatMessageGiphyAttachment = ChatMessageAttachment<GiphyAttachm
 public struct GiphyAttachmentPayload: AttachmentPayload {
     /// An attachment type all `GiphyAttachmentPayload` instances conform to. Is set to `.giphy`.
     public static let type: AttachmentType = .giphy
-    
-    /// A  title, usually the search request used to find the gif.
-    public var title: String
+
+    /// A title, usually the search request used to find the gif.
+    public var title: String?
     /// A link to gif file.
     public var previewURL: URL
     /// Actions when gif is not sent yet. (e.g. `Shuffle`)
     public var actions: [AttachmentAction]
+    /// The extra data for the attachment payload.
+    public var extraData: [String: RawJSON]?
 
     /// - Parameters:
-    ///   - title: Title of the giphy
-    ///   - previewURL: thumb url of the giphy
-    ///   - actions: Leave empty
-    public init(title: String, previewURL: URL, actions: [AttachmentAction] = []) {
+    ///   - title: The title of the giphy.
+    ///   - previewURL: The preview url of the giphy.
+    ///   - actions: The actions when gif is not sent yet. (e.g. `Shuffle`)
+    ///   - extraData: The extra data for the attachment payload.
+    public init(
+        title: String?,
+        previewURL: URL,
+        actions: [AttachmentAction] = [],
+        extraData: [String: RawJSON]? = nil
+    ) {
         self.title = title
         self.previewURL = previewURL
         self.actions = actions
+        self.extraData = extraData
     }
 }
 
@@ -47,10 +56,12 @@ extension GiphyAttachmentPayload: Encodable {
 
         try container.encode(title, forKey: .title)
         try container.encode(previewURL, forKey: .thumbURL)
-        
+
         // Encode giphy attachment specific keys
         var giphyAttachmentContainer = encoder.container(keyedBy: GiphyAttachmentSpecificCodingKeys.self)
         try giphyAttachmentContainer.encode(actions, forKey: .actions)
+
+        try extraData?.encode(to: encoder)
     }
 }
 
@@ -61,11 +72,13 @@ extension GiphyAttachmentPayload: Decodable {
         let container = try decoder.container(keyedBy: AttachmentCodingKeys.self)
         // Used for decoding giphy attachment specific keys
         let giphyAttachmentContainer = try decoder.container(keyedBy: GiphyAttachmentSpecificCodingKeys.self)
-        
+        let actions = try giphyAttachmentContainer.decodeIfPresent([AttachmentAction].self, forKey: .actions) ?? []
+
         self.init(
-            title: try container.decode(String.self, forKey: .title),
+            title: try container.decodeIfPresent(String.self, forKey: .title),
             previewURL: try container.decode(URL.self, forKey: .thumbURL),
-            actions: try giphyAttachmentContainer.decodeIfPresent([AttachmentAction].self, forKey: .actions) ?? []
+            actions: actions,
+            extraData: try Self.decodeExtraData(from: decoder)
         )
     }
 }

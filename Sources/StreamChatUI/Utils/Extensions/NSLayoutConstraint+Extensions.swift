@@ -1,8 +1,10 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import UIKit
+
+// swiftlint:disable regular_constraints_forbidden
 
 extension UILayoutPriority {
     /// Having our default priority lower than `.required(1000)` allow user easily
@@ -161,3 +163,5 @@ extension NSLayoutYAxisAnchor {
         constraint(lessThanOrEqualToSystemSpacingBelow: anchor, multiplier: multiplier).with(priority: .streamRequire)
     }
 }
+
+// swiftlint:enable regular_constraints_forbidden

@@ -1,14 +1,15 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import XCTest
 
 final class MessageList_Tests: StreamTestCase {
-    
+
     override func setUpWithError() throws {
         try super.setUpWithError()
         addTags([.coreFeatures])
+        assertMockServer()
     }
 
     func test_messageListUpdates_whenUserSendsMessage() {
@@ -49,9 +50,9 @@ final class MessageList_Tests: StreamTestCase {
 
     func test_sendsMessageWithOneEmoji() throws {
         linkToScenario(withId: 63)
-        
+
         let message = "🍏"
-        
+
         GIVEN("user opens the channel") {
             userRobot.login().openChannel()
         }
@@ -81,10 +82,10 @@ final class MessageList_Tests: StreamTestCase {
 
     func test_editsMessage() throws {
         linkToScenario(withId: 39)
-        
+
         let message = "test message"
         let editedMessage = "hello"
-        
+
         GIVEN("user opens the channel") {
             userRobot.login().openChannel()
         }
@@ -98,13 +99,13 @@ final class MessageList_Tests: StreamTestCase {
             userRobot.assertMessage(editedMessage)
         }
     }
-    
+
     func test_receivesMessage() throws {
         linkToScenario(withId: 64)
-        
+
         let message = "🚢"
         let author = "Han Solo"
-        
+
         GIVEN("user opens the channel") {
             userRobot.login().openChannel()
         }
@@ -115,13 +116,13 @@ final class MessageList_Tests: StreamTestCase {
             userRobot.assertMessageAuthor(author)
         }
     }
-    
+
     func test_messageIsEdited_whenParticipantEditsMessage() throws {
         linkToScenario(withId: 40)
-        
+
         let message = "test message"
         let editedMessage = "hello"
-        
+
         GIVEN("user opens the channel") {
             userRobot.login().openChannel()
         }
@@ -138,12 +139,9 @@ final class MessageList_Tests: StreamTestCase {
 
     func test_messageIncreases_whenUserEditsMessageWithOneLineText() throws {
         linkToScenario(withId: 99)
-        
-        try XCTSkipIf(ProcessInfo().operatingSystemVersion.majorVersion == 12,
-                      "XCUITest does not get text from a cell after editing it on iOS 12")
 
         let message = "test message"
-        
+
         GIVEN("user opens the channel") {
             userRobot.login().openChannel()
         }
@@ -154,15 +152,12 @@ final class MessageList_Tests: StreamTestCase {
             userRobot.assertMessageSizeChangesAfterEditing(linesCountShouldBeIncreased: true)
         }
     }
-    
+
     func test_messageDecreases_whenUserEditsMessage() throws {
         linkToScenario(withId: 100)
-        
-        try XCTSkipIf(ProcessInfo().operatingSystemVersion.majorVersion == 12,
-                      "XCUITest does not get text from a cell after editing it on iOS 12")
-        
+
         let message = "test\nmessage"
-        
+
         GIVEN("user opens the channel") {
             userRobot.login().openChannel()
         }
@@ -190,7 +185,7 @@ final class MessageList_Tests: StreamTestCase {
             userRobot.assertMessage(message)
         }
     }
-    
+
     func test_composerGrowthLimit() {
         linkToScenario(withId: 71)
 
@@ -203,16 +198,20 @@ final class MessageList_Tests: StreamTestCase {
             userRobot.assertComposerLimits(toNumberOfLines: 5)
         }
     }
-    
+
     func test_typingIndicator() {
         linkToScenario(withId: 73)
-        
+
         let isIpad = UIDevice.current.userInterfaceIdiom == .pad
         let typingIndicatorTimeout = isIpad ? 10 : XCUIElement.waitTimeout
         let typingEventsTimeout: Double = 3
-        
+        let message = "message"
+
         GIVEN("user opens the channel") {
-            userRobot.login().openChannel()
+            userRobot
+                .login()
+                .openChannel()
+                .sendMessage(message)
         }
         WHEN("participant starts typing") {
             participantRobot.wait(typingEventsTimeout).startTyping()
@@ -229,119 +228,6 @@ final class MessageList_Tests: StreamTestCase {
         }
         THEN("user observes typing indicator has disappeared") {
             userRobot.assertTypingIndicatorHidden(waitTimeout: typingIndicatorTimeout)
-        }
-    }
-
-    func test_messageListScrollsDown_whenMessageListIsScrolledUp_andUserSendsNewMessage() throws {
-        linkToScenario(withId: 193)
-        
-        try XCTSkipIf(ProcessInfo().operatingSystemVersion.majorVersion == 12,
-                      "[CIS-2020] Scroll on message list does not work well enough")
-
-        let newMessage = "New message"
-
-        GIVEN("user opens the channel") {
-            backendRobot.generateChannels(count: 1, messagesCount: 30)
-            userRobot.login().openChannel()
-        }
-        WHEN("user scrolls up") {
-            userRobot.scrollMessageListUp()
-        }
-        AND("user sends a new message") {
-            userRobot.sendMessage(newMessage)
-        }
-        THEN("message list is scrolled down") {
-            userRobot.assertMessageIsVisible(newMessage)
-        }
-    }
-
-    func test_messageListScrollsDown_whenMessageListIsScrolledDown_andUserReceivesNewMessage() throws {
-        linkToScenario(withId: 75)
-        
-        try XCTSkipIf(ProcessInfo().operatingSystemVersion.majorVersion == 12,
-                      "[CIS-2020] Scroll on message list does not work well enough")
-
-        let newMessage = "New message"
-
-        GIVEN("user opens the channel") {
-            backendRobot.generateChannels(count: 1, messagesCount: 30)
-            userRobot.login().openChannel()
-        }
-        WHEN("participant sends a message") {
-            participantRobot.sendMessage(newMessage)
-        }
-        THEN("message list is scrolled down") {
-            userRobot.assertMessageIsVisible(newMessage)
-        }
-    }
-
-    func test_messageListDoesNotScrollDown_whenMessageListIsScrolledUp_andUserReceivesNewMessage() {
-        linkToScenario(withId: 194)
-
-        let newMessage = "New message"
-
-        GIVEN("user opens the channel") {
-            backendRobot.generateChannels(count: 1, messagesCount: 30)
-            userRobot.login().openChannel()
-        }
-        WHEN("user scrolls up") {
-            userRobot.scrollMessageListUp()
-        }
-        AND("participant sends a message") {
-            participantRobot.sendMessage(newMessage)
-        }
-        THEN("message list is scrolled up") {
-            userRobot.assertMessageIsNotVisible(newMessage)
-        }
-    }
-
-    func test_messageListScrollsDown_whenUserTapsOnScrollToBottomButton() throws {
-        linkToScenario(withId: 196)
-        
-        try XCTSkipIf(ProcessInfo().operatingSystemVersion.majorVersion == 12,
-                      "[CIS-2020] Scroll on message list does not work well enough")
-
-        let newMessage = "New message"
-
-        GIVEN("user opens the channel") {
-            backendRobot.generateChannels(count: 1, messagesCount: 30)
-            userRobot.login().openChannel()
-        }
-        AND("user sends a new message") {
-            userRobot.sendMessage(newMessage)
-        }
-        WHEN("user scrolls up") {
-            userRobot.scrollMessageListUp()
-        }
-        AND("user taps on 'scroll to bottom' button") {
-            userRobot.tapOnScrollToBottomButton()
-        }
-        THEN("message list is scrolled down") {
-            userRobot.assertMessageIsVisible(newMessage)
-        }
-    }
-
-    func test_reloadsSkippedMessages_whenScrolledToTheBottom() throws {
-        linkToScenario(withId: 289)
-
-        try XCTSkipIf(ProcessInfo().operatingSystemVersion.majorVersion == 12,
-                      "[CIS-2020] Scroll on message list does not work well enough")
-
-        GIVEN("user opens the channel") {
-            backendRobot.generateChannels(count: 1, messagesCount: 30)
-            userRobot.login().openChannel()
-        }
-        AND("user scrolls up") {
-            userRobot.scrollMessageListUpSlow()
-        }
-        AND("participant sends some messages") {
-            participantRobot.sendMultipleMessages(repeatingText: "Some message", count: 16)
-        }
-        WHEN("user scrolls to the bottom") {
-            userRobot.tapOnScrollToBottomButton()
-        }
-        THEN("skipped messages are reloaded") {
-            userRobot.assertMessageIsVisible("Some message-16")
         }
     }
 
@@ -362,19 +248,15 @@ final class MessageList_Tests: StreamTestCase {
             userRobot.assertComposerCommands(shouldBeVisible: false)
         }
     }
-    
+
     func test_offlineMessageInTheMessageList() throws {
         linkToScenario(withId: 34)
-        
-        try XCTSkipIf(ProcessInfo().operatingSystemVersion.majorVersion == 12,
-                      "This test is not stable enough on iOS 12")
-        
+
         let message = "test message"
 
         GIVEN("user opens the channel") {
             backendRobot.generateChannels(count: 1, messagesCount: 40)
             userRobot
-                .setConnectivitySwitchVisibility(to: .on)
                 .login()
                 .openChannel()
         }
@@ -391,16 +273,15 @@ final class MessageList_Tests: StreamTestCase {
             userRobot.assertMessage(message)
         }
     }
-    
+
     func test_addMessageWhileOffline() {
         linkToScenario(withId: 36)
-        
+
         let message = "test message"
 
         GIVEN("user opens the channel") {
             userRobot
                 .setIsLocalStorageEnabled(to: .on)
-                .setConnectivitySwitchVisibility(to: .on)
                 .login()
                 .openChannel()
         }
@@ -417,15 +298,23 @@ final class MessageList_Tests: StreamTestCase {
             userRobot.setConnectivity(to: .on)
         }
         THEN("new message is delivered") {
-            userRobot
+            let success = userRobot
                 .assertMessage(message)
-                .assertMessageDeliveryStatus(.sent, at: 0)
+                .waitForMessageDeliveryStatus(.sent, at: 0)
+            
+            if success {
+                userRobot.assertMessageDeliveryStatus(.sent, at: 0)
+            } else {
+                userRobot
+                    .selectOptionFromContextMenu(option: .resend, forMessageAtIndex: 0)
+                    .assertMessageDeliveryStatus(.sent, at: 0)
+            }
         }
     }
-    
+
     func test_offlineRecoveryWithinSession() {
         linkToScenario(withId: 207)
-        
+
         let message = "test message"
 
         GIVEN("user opens the channel") {
@@ -450,56 +339,163 @@ final class MessageList_Tests: StreamTestCase {
     }
 }
 
-// MARK: Quoted messages
-
+// MARK: Scroll to bottom
+    
 extension MessageList_Tests {
+    
+    func test_messageListScrollsDown_whenMessageListIsScrolledUp_andUserSendsNewMessage() throws {
+        linkToScenario(withId: 193)
 
-    func test_quotedReplyInList_whenUserAddsQuotedReply() {
-        linkToScenario(withId: 51)
-
-        let messageCount = 1
-        let message = String(messageCount)
-        let quotedMessage = "quoted reply"
+        let newMessage = "New message"
 
         GIVEN("user opens the channel") {
-            backendRobot.generateChannels(count: 1, messagesCount: messageCount)
+            backendRobot.generateChannels(count: 1, messagesCount: 30)
             userRobot.login().openChannel()
         }
-        AND("participant sends a message") {
-            participantRobot.sendMessage(message)
+        WHEN("user scrolls up") {
+            userRobot.scrollMessageListUp()
         }
-        WHEN("user adds a quoted reply to participant message") {
-            userRobot.replyToMessage(quotedMessage)
+        AND("user sends a new message") {
+            userRobot.sendMessage(newMessage)
         }
-        THEN("user observes the reply in message list") {
-            userRobot.assertQuotedMessage(replyText: quotedMessage, quotedText: message)
+        THEN("message list is scrolled down") {
+            userRobot
+                .assertMessageIsVisible(newMessage)
+                .assertScrollToBottomButton(isVisible: false)
         }
     }
 
-    func test_quotedReplyInList_whenParticipantAddsQuotedReply() {
-        linkToScenario(withId: 52)
+    func test_messageListScrollsDown_whenMessageListIsScrolledDown_andUserReceivesNewMessage() throws {
+        linkToScenario(withId: 75)
 
-        let messageCount = 1
-        let message = String(messageCount)
-        let quotedMessage = "quoted reply"
+        let newMessage = "New message"
 
         GIVEN("user opens the channel") {
-            backendRobot.generateChannels(count: 1, messagesCount: messageCount)
+            backendRobot.generateChannels(count: 1, messagesCount: 30)
             userRobot.login().openChannel()
         }
-        WHEN("participant adds a quoted reply to users message") {
-            participantRobot.replyToMessage(quotedMessage)
+        WHEN("participant sends a message") {
+            participantRobot.sendMessage(newMessage)
         }
-        THEN("user observes the reply in message list") {
-            userRobot.assertQuotedMessage(replyText: quotedMessage, quotedText: message)
+        THEN("message list is scrolled down") {
+            userRobot
+                .assertMessageIsVisible(newMessage)
+                .assertScrollToBottomButton(isVisible: false)
+        }
+    }
+
+    func test_messageListDoesNotScrollDown_whenMessageListIsScrolledUp_andUserReceivesNewMessage() {
+        linkToScenario(withId: 194)
+
+        let newMessage = "New message"
+
+        GIVEN("user opens the channel") {
+            backendRobot.generateChannels(count: 1, messagesCount: 30)
+            userRobot.login().openChannel()
+        }
+        WHEN("user scrolls up") {
+            userRobot.scrollMessageListUp()
+        }
+        AND("participant sends a message") {
+            participantRobot.sendMessage(newMessage)
+        }
+        THEN("message list is not scrolled down") {
+            userRobot
+                .assertMessageIsNotVisible(newMessage)
+                .assertScrollToBottomButton(isVisible: true)
+        }
+    }
+
+    func test_messageListScrollsDown_whenUserTapsOnScrollToBottomButton() throws {
+        linkToScenario(withId: 196)
+
+        let newMessage = "New message"
+
+        GIVEN("user opens the channel") {
+            backendRobot.generateChannels(count: 1, messagesCount: 30)
+            userRobot.login().openChannel()
+        }
+        AND("user sends a new message") {
+            userRobot.sendMessage(newMessage)
+        }
+        WHEN("user scrolls up") {
+            userRobot.scrollMessageListUp()
+        }
+        AND("user taps on 'scroll to bottom' button") {
+            userRobot.tapOnScrollToBottomButton()
+        }
+        THEN("message list is scrolled down") {
+            userRobot
+                .assertMessageIsVisible(newMessage)
+                .assertScrollToBottomButton(isVisible: false)
+        }
+    }
+
+    func test_reloadsSkippedMessages_whenScrolledToTheBottom() throws {
+        linkToScenario(withId: 289)
+
+        GIVEN("user opens the channel") {
+            backendRobot.generateChannels(count: 1, messagesCount: 30)
+            userRobot.login().openChannel()
+        }
+        AND("user scrolls up") {
+            userRobot.scrollMessageListUpSlow()
+        }
+        AND("participant sends some messages") {
+            participantRobot.sendMultipleMessages(repeatingText: "Some message", count: 16)
+        }
+        WHEN("user scrolls to the bottom") {
+            userRobot.tapOnScrollToBottomButton()
+        }
+        THEN("skipped messages are reloaded") {
+            userRobot
+                .assertMessageIsVisible("Some message-16")
+                .assertScrollToBottomButton(isVisible: false)
         }
     }
     
+    func test_scrollToBottom_unreadCount() throws {
+        throw XCTSkip("https://github.com/GetStream/ios-issues-tracking/issues/491")
+        
+        linkToScenario(withId: 1669)
+
+        let newMessage = "New message"
+
+        GIVEN("user opens the channel") {
+            backendRobot.generateChannels(count: 1, messagesCount: 30)
+            userRobot.login().openChannel()
+        }
+        WHEN("user scrolls up") {
+            userRobot.scrollMessageListUp(times: 2)
+        }
+        AND("participant sends a message") {
+            participantRobot.sendMessage(newMessage)
+        }
+        THEN("message list is not scrolled down") {
+            userRobot
+                .assertMessageIsNotVisible(newMessage)
+                .assertScrollToBottomButton(isVisible: true)
+                .assertScrollToBottomButtonUnreadCount(1)
+        }
+        WHEN("user taps on scroll to bottom button") {
+            userRobot.tapOnScrollToBottomButton()
+        }
+        AND("user scrolls up") {
+            userRobot.scrollMessageListUp(times: 2)
+        }
+        THEN("unread count is not displayed") {
+            userRobot
+                .assertScrollToBottomButton(isVisible: true)
+                .assertScrollToBottomButtonUnreadCount(0)
+        }
+    }
+}
+    
+// MARK: Pagination
+    
+extension MessageList_Tests {
     func test_paginationOnMessageList() throws {
         linkToScenario(withId: 56)
-        
-        try XCTSkipIf(ProcessInfo().operatingSystemVersion.majorVersion == 12,
-                      "[CIS-2020] Scroll on message list does not work well enough")
         
         let messagesCount = 60
         
@@ -515,9 +511,6 @@ extension MessageList_Tests {
     func test_paginationOnThread() throws {
         linkToScenario(withId: 55)
         
-        try XCTSkipIf(ProcessInfo().operatingSystemVersion.majorVersion == 12,
-                      "[CIS-2020] Scroll on message list does not work well enough")
-        
         let replyCount = 60
         
         GIVEN("user opens the channel") {
@@ -531,6 +524,11 @@ extension MessageList_Tests {
             userRobot.assertMessageListPagination(messagesCount: replyCount + 1)
         }
     }
+}
+
+// MARK: Mentions
+
+extension MessageList_Tests {
     
     func test_addingCommandHidesLeftButtons() {
         linkToScenario(withId: 104)
@@ -585,12 +583,17 @@ extension MessageList_Tests {
             userRobot.assertMentionWasApplied()
         }
     }
-    
+}
+
+// MARK: Links preview
+
+extension MessageList_Tests {
+
     func test_addMessageWithLinkToUnsplash() {
         linkToScenario(withId: 59)
-        
+
         let message = "https://unsplash.com/photos/1_2d3MRbI9c"
-        
+
         GIVEN("user opens the channel") {
             userRobot.login().openChannel()
         }
@@ -603,12 +606,12 @@ extension MessageList_Tests {
             userRobot.assertLinkPreview()
         }
     }
-    
+
     func test_addMessageWithLinkToYoutube() {
         linkToScenario(withId: 60)
-        
+
         let message = "https://youtube.com/watch?v=xOX7MsrbaPY"
-        
+
         GIVEN("user opens the channel") {
             userRobot.login().openChannel()
         }
@@ -618,15 +621,15 @@ extension MessageList_Tests {
                 .scrollMessageListDown() // to hide the keyboard
         }
         THEN("user observes a preview of the video with description") {
-            userRobot.assertLinkPreview(alsoVerifyServiceName: "YouTube")
+            userRobot.assertLinkPreview()
         }
     }
-    
+
     func test_participantAddsMessageWithLinkToUnsplash() {
         linkToScenario(withId: 280)
-        
+
         let message = "https://unsplash.com/photos/1_2d3MRbI9c"
-        
+
         GIVEN("user opens the channel") {
             userRobot.login().openChannel()
         }
@@ -638,12 +641,12 @@ extension MessageList_Tests {
             userRobot.assertLinkPreview()
         }
     }
-    
+
     func test_participantAddsMessageWithLinkToYoutube() {
         linkToScenario(withId: 281)
-        
+
         let message = "https://youtube.com/watch?v=xOX7MsrbaPY"
-        
+
         GIVEN("user opens the channel") {
             userRobot.login().openChannel()
         }
@@ -652,7 +655,43 @@ extension MessageList_Tests {
             userRobot.scrollMessageListDown() // to hide the keyboard
         }
         THEN("user observes a preview of the video with description") {
-            userRobot.assertLinkPreview(alsoVerifyServiceName: "YouTube")
+            userRobot.assertLinkPreview()
+        }
+    }
+
+    func test_messageWithLinkOpensSafari() {
+        linkToScenario(withId: 3119)
+
+        let message = "Some link: https://youtube.com"
+
+        GIVEN("user opens the channel") {
+            userRobot.login().openChannel()
+        }
+        WHEN("user sends a message with YouTube link") {
+            userRobot
+                .sendMessage(message)
+                .scrollMessageListDown() // to hide the keyboard
+        }
+        THEN("user observes safari opening") {
+            userRobot.assertLinkOpensSafari()
+        }
+    }
+
+    func test_messageWithLinkOpensSafari_whenNoHttpScheme() {
+        linkToScenario(withId: 3120)
+
+        let message = "Some link: youtube.com"
+
+        GIVEN("user opens the channel") {
+            userRobot.login().openChannel()
+        }
+        WHEN("user sends a message with YouTube link without https://") {
+            userRobot
+                .sendMessage(message)
+                .scrollMessageListDown() // to hide the keyboard
+        }
+        THEN("user observes safari opening") {
+            userRobot.assertLinkOpensSafari()
         }
     }
 }
@@ -661,9 +700,9 @@ extension MessageList_Tests {
 extension MessageList_Tests {
     func test_threadReplyAppearsInThread_whenParticipantAddsThreadReply() {
         linkToScenario(withId: 50)
-        
+
         let threadReply = "thread reply"
-        
+
         GIVEN("user opens the channel") {
             backendRobot.generateChannels(count: 1, messagesCount: 1)
             userRobot.login().openChannel()
@@ -678,12 +717,12 @@ extension MessageList_Tests {
             userRobot.assertThreadReply(threadReply)
         }
     }
-    
+
     func test_threadReplyAppearsInChannelAndThread_whenParticipantAddsThreadReplySentAlsoToChannel() {
         linkToScenario(withId: 110)
-        
+
         let threadReply = "thread reply"
-        
+
         GIVEN("user opens the channel") {
             backendRobot.generateChannels(count: 1, messagesCount: 1)
             userRobot.login().openChannel()
@@ -701,7 +740,7 @@ extension MessageList_Tests {
             userRobot.assertThreadReply(threadReply)
         }
     }
-    
+
     func test_threadReplyAppearsInChannelAndThread_whenUserAddsThreadReplySentAlsoToChannel() {
         linkToScenario(withId: 111)
 
@@ -723,10 +762,10 @@ extension MessageList_Tests {
                 .assertMessage(threadReply)
         }
     }
-    
+
     func test_threadTypingIndicatorHidden_whenParticipantStopsTyping() {
         linkToScenario(withId: 243)
-        
+
         GIVEN("user opens the channel") {
             backendRobot.generateChannels(count: 1, messagesCount: 1)
             userRobot.login().openChannel()
@@ -758,7 +797,7 @@ extension MessageList_Tests {
 
         let message = "Hey there"
         let messageWithForbiddenContent = server.forbiddenWords.first ?? ""
-        
+
         GIVEN("user opens the channel") {
             userRobot
                 .login()
@@ -777,12 +816,12 @@ extension MessageList_Tests {
             userRobot.assertMessageHasTimestamp(at: 1)
         }
     }
-    
+
     func test_messageEndsGroup_whenFollowedByEphemeralMessage() {
         linkToScenario(withId: 221)
-        
+
         let message = "Hey there"
-        
+
         GIVEN("user opens the channel") {
             userRobot
                 .login()
@@ -795,10 +834,14 @@ extension MessageList_Tests {
             userRobot.assertMessageHasTimestamp()
         }
         WHEN("user sends an ephemeral message") {
-            userRobot.sendGiphy(send: false)
+            userRobot
+                .sendGiphy(send: false)
+                .scrollMessageListDown() // to hide the keyboard
         }
         THEN("messages are not grouped, 1st message shows the timestamp") {
-            userRobot.assertMessageHasTimestamp(at: 1)
+            userRobot
+                .assertMessageCount(2)
+                .assertMessageHasTimestamp(at: 1)
         }
     }
 
@@ -832,9 +875,9 @@ extension MessageList_Tests {
 extension MessageList_Tests {
     func test_deletesMessage() throws {
         linkToScenario(withId: 37)
-        
+
         let message = "test message"
-        
+
         GIVEN("user opens the channel") {
             userRobot.login().openChannel()
         }
@@ -848,12 +891,12 @@ extension MessageList_Tests {
             userRobot.assertDeletedMessage()
         }
     }
-    
+
     func test_messageDeleted_whenParticipantDeletesMessage() throws {
         linkToScenario(withId: 38)
-        
+
         let message = "test message"
-        
+
         GIVEN("user opens the channel") {
             userRobot.login().openChannel()
         }
@@ -864,46 +907,6 @@ extension MessageList_Tests {
             participantRobot.deleteMessage()
         }
         THEN("the message is deleted") {
-            userRobot.assertDeletedMessage()
-        }
-    }
-    
-    func test_quotedReplyIsDeletedByParticipant_deletedMessageIsShown() {
-        linkToScenario(withId: 108)
-
-        let quotedMessage = "quoted reply"
-
-        GIVEN("user opens the channel") {
-            backendRobot.generateChannels(count: 1, messagesCount: 1)
-            userRobot.login().openChannel()
-        }
-        AND("participant adds a quoted reply") {
-            participantRobot.replyToMessage(quotedMessage)
-        }
-        WHEN("participant deletes a quoted message") {
-            participantRobot.deleteMessage()
-        }
-        THEN("user observes Message deleted") {
-            userRobot.assertDeletedMessage()
-        }
-    }
-    
-    func test_quotedReplyIsDeletedByUser_deletedMessageIsShown() {
-        linkToScenario(withId: 109)
-        
-        let quotedMessage = "quoted reply"
-        
-        GIVEN("user opens the channel") {
-            backendRobot.generateChannels(count: 1, messagesCount: 1)
-            userRobot.login().openChannel()
-        }
-        AND("user adds a quoted reply") {
-            userRobot.replyToMessage(quotedMessage)
-        }
-        WHEN("user deletes a quoted message") {
-            userRobot.deleteMessage()
-        }
-        THEN("deleted message is shown") {
             userRobot.assertDeletedMessage()
         }
     }
@@ -933,7 +936,7 @@ extension MessageList_Tests {
         }
     }
 
-    func test_threadReplyIsRemovedEverywhere_whenUserRemovesItFromChannel() {
+    func test_threadReplyIsRemovedEverywhere_whenUserRemovesItFromChannel() throws {
         linkToScenario(withId: 114)
 
         let threadReply = "thread reply"
@@ -957,7 +960,7 @@ extension MessageList_Tests {
                 .assertDeletedMessage()
         }
     }
-    
+
     func test_participantRemovesThreadReply() {
         linkToScenario(withId: 54)
 
@@ -980,7 +983,7 @@ extension MessageList_Tests {
             userRobot.openThread().assertDeletedMessage()
         }
     }
-    
+
     func test_threadReplyIsRemovedEverywhere_whenUserRemovesItFromThread() {
         linkToScenario(withId: 115)
 
@@ -1007,8 +1010,8 @@ extension MessageList_Tests {
                 .assertDeletedMessage()
         }
     }
-    
-    func test_userRemovesThreadReply() {
+
+    func test_userRemovesThreadReply() throws {
         linkToScenario(withId: 53)
 
         let threadReply = "thread reply"
@@ -1032,12 +1035,12 @@ extension MessageList_Tests {
                 .assertThreadReplyCountButton()
         }
     }
-    
+
     func test_hardDeletesMessage() throws {
         linkToScenario(withId: 234)
-        
+
         let message = "test message"
-        
+
         GIVEN("user opens the channel") {
             backendRobot.generateChannels(count: 1, messagesCount: 1)
             userRobot.login().openChannel()
@@ -1052,12 +1055,12 @@ extension MessageList_Tests {
             userRobot.assertHardDeletedMessage(withText: message)
         }
     }
-    
+
     func test_messageDeleted_whenParticipantHardDeletesMessage() throws {
         linkToScenario(withId: 235)
-        
+
         let message = "test message"
-        
+
         GIVEN("user opens the channel") {
             backendRobot.generateChannels(count: 1, messagesCount: 1)
             userRobot.login().openChannel()

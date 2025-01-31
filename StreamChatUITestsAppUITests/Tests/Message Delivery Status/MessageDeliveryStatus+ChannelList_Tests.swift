@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import XCTest
@@ -16,6 +16,7 @@ final class MessageDeliveryStatus_ChannelList_Tests: StreamTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
         addTags([.messageDeliveryStatus])
+        assertMockServer()
     }
 
     func test_deliveryStatusClocksShownInPreview_whenTheLastMessageIsInPendingState() {
@@ -67,7 +68,6 @@ final class MessageDeliveryStatus_ChannelList_Tests: StreamTestCase {
 
         GIVEN("user opens the channel") {
             userRobot
-                .setConnectivitySwitchVisibility(to: .on)
                 .login()
                 .openChannel()
         }
@@ -190,7 +190,6 @@ extension MessageDeliveryStatus_ChannelList_Tests {
 
         GIVEN("user opens the channel") {
             userRobot
-                .setConnectivitySwitchVisibility(to: .on)
                 .login()
                 .openChannel()
         }

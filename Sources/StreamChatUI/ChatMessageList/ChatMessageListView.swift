@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -23,31 +23,30 @@ open class ChatMessageListView: UITableView, Customizable, ComponentsProvider {
     /// This property is especially useful when resetting the skipped messages
     /// since we want to reload the data and insert back the skipped messages, for this,
     /// we update the messages data with the one originally reported by the data controller.
-    internal var currentMessagesFromDataSource: [ChatMessage] = []
+    internal var currentMessagesFromDataSource: LazyCachedMapCollection<ChatMessage> = []
 
     /// The new messages snapshot reported by the channel or message controller.
     /// If messages are being skipped, this snapshot doesn't include skipped messages.
-    internal var newMessagesSnapshot: [ChatMessage] = [] {
-        didSet {
-            newMessagesSnapshot = newMessagesSnapshot.filter {
-                !self.skippedMessages.contains($0.id)
-            }
-        }
-    }
+    internal var newMessagesSnapshot: LazyCachedMapCollection<ChatMessage> = []
 
     /// When inserting messages at the bottom, if the user is scrolled up,
     /// we skip adding the message to the UI until the user scrolls back
     /// to the bottom. This is to avoid message list jumps.
     internal var skippedMessages: Set<MessageId> = []
+
     /// This closure is to update the dataSource when DifferenceKit
     /// reports the data source should be updated.
     internal var onNewDataSource: (([ChatMessage]) -> Void)?
+
+    /// Property used for `adjustContentInsetToPositionMessagesAtTheTop()` to avoid
+    /// reseting the content inset more than one time.
+    private var requiresContentInsetReset = false
 
     // MARK: Lifecycle
 
     override open func didMoveToSuperview() {
         super.didMoveToSuperview()
-        
+
         guard !isInitialized, superview != nil else { return }
 
         isInitialized = true
@@ -56,40 +55,56 @@ open class ChatMessageListView: UITableView, Customizable, ComponentsProvider {
         setUpLayout()
         setUpAppearance()
     }
-    
+
     open func setUp() {
         keyboardDismissMode = .onDrag
         rowHeight = UITableView.automaticDimension
         separatorStyle = .none
         transform = .mirrorY
     }
-    
+
     open func setUpAppearance() { /* default empty implementation */ }
     open func setUpLayout() { /* default empty implementation */ }
     open func updateContent() { /* default empty implementation */ }
 
+    override open func layoutSubviews() {
+        super.layoutSubviews()
+
+        adjustContentInsetToPositionMessagesAtTheTop()
+    }
+
     // MARK: Public API
-    
+
     /// Calculates the cell reuse identifier for the given options.
     /// - Parameters:
     ///   - contentViewClass: The type of message content view.
     ///   - attachmentViewInjectorType: The type of attachment injector.
     ///   - layoutOptions: The message content view layout options.
+    ///   - message: The message data.
     /// - Returns: The cell reuse identifier.
     open func reuseIdentifier(
         contentViewClass: ChatMessageContentView.Type,
         attachmentViewInjectorType: AttachmentViewInjector.Type?,
-        layoutOptions: ChatMessageLayoutOptions
+        layoutOptions: ChatMessageLayoutOptions,
+        message: ChatMessage?
     ) -> String {
-        let components = [
+        var components = [
             ChatMessageCell.reuseId,
             String(layoutOptions.id),
-            String(describing: contentViewClass),
-            String(describing: attachmentViewInjectorType)
+            String(describing: contentViewClass)
         ]
+        
+        /// If the message should render mixed attachments, the id should be based on the underlying injectors.
+        if let mixedAttachmentInjector = attachmentViewInjectorType as? MixedAttachmentViewInjector.Type {
+            let injectors = mixedAttachmentInjector.injectors(for: message)
+            components.append(contentsOf: injectors.map(String.init(describing:)))
+        } else {
+            components.append(String(describing: attachmentViewInjectorType))
+        }
+
         return components.joined(separator: "_")
     }
-    
+
     /// Returns the reuse identifier of the given cell.
     /// - Parameter cell: The cell to calculate reuse identifier for.
     /// - Returns: The reuse identifier.
@@ -99,11 +114,12 @@ open class ChatMessageListView: UITableView, Customizable, ComponentsProvider {
             let messageContentView = cell.messageContentView,
             let layoutOptions = messageContentView.layoutOptions
         else { return nil }
-        
+
         return reuseIdentifier(
             contentViewClass: type(of: messageContentView),
             attachmentViewInjectorType: messageContentView.attachmentViewInjector.map { type(of: $0) },
-            layoutOptions: layoutOptions
+            layoutOptions: layoutOptions,
+            message: messageContentView.content
         )
     }
 
@@ -113,20 +129,23 @@ open class ChatMessageListView: UITableView, Customizable, ComponentsProvider {
     ///   - contentViewClass: The type of content view the cell will be displaying.
     ///   - layoutOptions: The option set describing content view layout.
     ///   - indexPath: The cell index path.
+    ///   - message: The message data.
     /// - Returns: The instance of `ChatMessageCollectionViewCell` set up with the
     /// provided `contentViewClass` and `layoutOptions`
     open func dequeueReusableCell(
         contentViewClass: ChatMessageContentView.Type,
         attachmentViewInjectorType: AttachmentViewInjector.Type?,
         layoutOptions: ChatMessageLayoutOptions,
-        for indexPath: IndexPath
+        for indexPath: IndexPath,
+        message: ChatMessage?
     ) -> ChatMessageCell {
         let reuseIdentifier = self.reuseIdentifier(
             contentViewClass: contentViewClass,
             attachmentViewInjectorType: attachmentViewInjectorType,
-            layoutOptions: layoutOptions
+            layoutOptions: layoutOptions,
+            message: message
         )
-        
+
         // There is no public API to find out
         // if the given `identifier` is registered.
         if !identifiers.contains(reuseIdentifier) {
@@ -134,7 +153,7 @@ open class ChatMessageListView: UITableView, Customizable, ComponentsProvider {
 
             register(ChatMessageCell.self, forCellReuseIdentifier: reuseIdentifier)
         }
-        
+
         let cell = dequeueReusableCell(with: ChatMessageCell.self, for: indexPath, reuseIdentifier: reuseIdentifier)
 
         cell.setMessageContentIfNeeded(
@@ -142,19 +161,19 @@ open class ChatMessageListView: UITableView, Customizable, ComponentsProvider {
             attachmentViewInjectorType: attachmentViewInjectorType,
             options: layoutOptions
         )
-        
+
         cell.messageContentView?.indexPath = { [weak cell, weak self] in
             guard let cell = cell else { return nil }
             return self?.indexPath(for: cell)
         }
-        
+
         cell.contentView.transform = .mirrorY
 
         return cell
     }
-    
-    /// Scrolls to most recent message
-    open func scrollToMostRecentMessage(animated: Bool = true) {
+
+    /// Scroll to the bottom of the message list.
+    open func scrollToBottom(animated: Bool = true) {
         let rowsRange = 0..<numberOfRows(inSection: 0)
         let lastMessageIndexPath = IndexPath(row: 0, section: 0)
         let prevMessageIndexPath = IndexPath(row: 1, section: 0)
@@ -163,85 +182,58 @@ open class ChatMessageListView: UITableView, Customizable, ComponentsProvider {
            rowsRange.contains(prevMessageIndexPath.row) {
             scrollToRow(at: prevMessageIndexPath, at: .top, animated: animated)
         }
-        
+
         if rowsRange.contains(lastMessageIndexPath.row) {
             scrollToRow(at: lastMessageIndexPath, at: .top, animated: animated)
         }
     }
-    
+
+    /// Scroll to the top of the message list.
+    open func scrollToTop(animated: Bool = true) {
+        let numberOfRows = numberOfRows(inSection: 0)
+        guard numberOfRows > 0 else { return }
+        let indexPath = IndexPath(row: numberOfRows - 1, section: 0)
+        scrollToRow(at: indexPath, at: .bottom, animated: animated)
+    }
+
     /// A Boolean that returns true if the bottom cell is fully visible.
     /// Which is also means that the collection view is fully scrolled to the boom.
     open var isLastCellFullyVisible: Bool {
         guard numberOfRows(inSection: 0) > 0 else { return false }
-        
+
         let cellRect = rectForRow(at: .init(row: 0, section: 0))
-        
+
         return cellRect.minY >= contentOffset.y
     }
-    
+
     /// Updates the table view data with given `changes`.
     open func updateMessages(
         with changes: [ListChange<ChatMessage>],
         completion: (() -> Void)? = nil
     ) {
-        let newestChange = changes.first(where: { $0.indexPath.item == 0 })
-        let isNewestChangeInsertion = newestChange?.isInsertion == true
-        let isNewestChangeNotByCurrentUser = newestChange?.item.isSentByCurrentUser == false
-        let isNewestChangeNotVisible = !isLastCellFullyVisible && !previousMessagesSnapshot.isEmpty
-        let shouldSkipMessagesInsertions = isNewestChangeNotVisible && isNewestChangeInsertion && isNewestChangeNotByCurrentUser
-
-        if shouldSkipMessagesInsertions {
-            changes.filter(\.isInsertion).forEach {
-                skippedMessages.insert($0.item.id)
-            }
-
-            // By setting the new snapshots to itself, it will
-            // trigger didSet and remove the newly skipped messages.
-            let newMessageSnapshot = newMessagesSnapshot
-            newMessagesSnapshot = newMessageSnapshot
+        let previousMessagesSnapshot = self.previousMessagesSnapshot
+        let newMessagesWithoutSkipped = newMessagesSnapshot.filter {
+            !self.skippedMessages.contains($0.id)
         }
+        adjustContentInsetToPositionMessagesAtTheTop()
 
-        UIView.performWithoutAnimation {
-            reloadMessages(
+        let reloadMessages: () -> Void = {
+            self.reloadMessages(
                 previousSnapshot: previousMessagesSnapshot,
-                newSnapshot: newMessagesSnapshot,
+                newSnapshot: newMessagesWithoutSkipped,
                 with: .fade,
                 completion: { [weak self] in
-                    let newestChangeIsInsertionOrMove = isNewestChangeInsertion || newestChange?.isMove == true
-                    if newestChangeIsInsertionOrMove, let newMessage = newestChange?.item {
-                        // Scroll to the bottom if the new message was sent by
-                        // the current user, or moved by the current user
-                        if newMessage.isSentByCurrentUser {
-                            self?.scrollToMostRecentMessage()
-                        }
-
-                        // When a Giphy moves to the bottom, we need to also trigger a reload
-                        // Since a move doesn't trigger a reload of the cell.
-                        if newestChange?.isMove == true {
-                            let movedIndexPath = IndexPath(item: 0, section: 0)
-                            self?.reloadRows(at: [movedIndexPath], with: .none)
-                        }
-                    }
-
-                    // When there are deletions, we should update the previous message, so that we add the
-                    // avatar image back and the timestamp too. Since we have an inverted list, the previous
-                    // message has the same index of the deleted message after the deletion has been executed.
-                    let visibleRemoves = changes.filter {
-                        $0.isRemove && self?.indexPathsForVisibleRows?.contains($0.indexPath) == true
-                    }
-                    visibleRemoves.forEach {
-                        self?.reloadRows(at: [$0.indexPath], with: .none)
-                    }
-
                     completion?()
+                    self?.adjustContentInsetToPositionMessagesAtTheTop()
                 }
             )
+        }
 
-            // If we are inserting messages at the bottom, update the previous cell
-            // to hide the timestamp of the previous message if needed.
-            if self.isLastCellFullyVisible, self.newMessagesSnapshot.count > 1 {
-                let previousMessageIndexPath = IndexPath(item: 1, section: 0)
-                self.reloadRows(at: [previousMessageIndexPath], with: .none)
+        if components.isMessageListAnimationsEnabled {
+            reloadMessages()
+        } else {
+            UIView.performWithoutAnimation {
+                reloadMessages()
             }
         }
     }
@@ -251,14 +243,50 @@ open class ChatMessageListView: UITableView, Customizable, ComponentsProvider {
     internal func reloadSkippedMessages() {
         skippedMessages = []
         newMessagesSnapshot = currentMessagesFromDataSource
-        onNewDataSource?(newMessagesSnapshot)
+        onNewDataSource?(Array(newMessagesSnapshot))
         reloadData()
-        scrollToMostRecentMessage()
+        scrollToBottom()
+    }
+
+    /// Adjusts the content inset so that messages are inserted at the top when there are few messages.
+    /// This is will be executed if the `Components.shouldMessagesStartAtTheTop` is enabled.
+    internal func adjustContentInsetToPositionMessagesAtTheTop() {
+        guard components.shouldMessagesStartAtTheTop else {
+            return
+        }
+
+        // If the height of message list is more than the content height
+        // then adjust the content inset so that it fills the remaining height
+        // otherwise do not set any content inset.
+        let contentSizeHeight = contentSize.height
+        let messageListHeight = frame.height
+        let newContentInset = messageListHeight - contentSizeHeight
+        if newContentInset > 0 {
+            contentInset.top = newContentInset
+            showsVerticalScrollIndicator = false
+            requiresContentInsetReset = true
+            // In case  we already removed the content inset, there's
+            // no need to do it every time.
+        } else if requiresContentInsetReset {
+            requiresContentInsetReset = false
+            contentInset.top = 0
+            showsVerticalScrollIndicator = true
+        } else {
+            // no-op
+        }
+    }
+
+    // MARK: - Deprecations
+
+    /// Scrolls to most recent message. (Scrolls to the bottom of the message list).
+    @available(*, deprecated, renamed: "scrollToBottom(animated:)")
+    open func scrollToMostRecentMessage(animated: Bool = true) {
+        scrollToBottom(animated: animated)
     }
 }
 
 // MARK: Helpers
 
-private extension CGAffineTransform {
+internal extension CGAffineTransform {
     static let mirrorY = Self(scaleX: 1, y: -1)
 }

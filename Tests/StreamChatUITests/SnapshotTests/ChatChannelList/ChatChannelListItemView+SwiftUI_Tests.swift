@@ -1,19 +1,19 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
 @testable import StreamChatTestTools
 import StreamChatUI
+import StreamSwiftTestHelpers
 import SwiftUI
 import XCTest
 
-@available(iOS 13.0, *)
 final class ChatChannelListItemView_SwiftUI_Tests: XCTestCase {
     func test_injectedSwiftUIView() {
         struct CustomChannelListItemView: ChatChannelListItemView.SwiftUIView {
             @ObservedObject var dataSource: ChatChannelListItemView.ObservedObject<Self>
-            
+
             public init(dataSource: ChatChannelListItemView.ObservedObject<Self>) {
                 self.dataSource = dataSource
             }
@@ -27,7 +27,7 @@ final class ChatChannelListItemView_SwiftUI_Tests: XCTestCase {
                         .mask(Circle())
                         .frame(width: 50, height: 50)
 
-                    Spacer()
+                    SwiftUI.Spacer()
 
                     Text(dataSource.content!.channel.name!)
                 }.padding()
@@ -58,7 +58,6 @@ private extension UIView {
     }
 }
 
-@available(iOS 13.0, *)
 extension Image {
     init(url: URL) {
         let uiImage = UIImage(data: try! Data(contentsOf: url))!

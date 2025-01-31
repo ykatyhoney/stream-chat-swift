@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
@@ -11,7 +11,7 @@ public extension ChatClient {
     /// - Returns: A new instance of `ChatConnectionController`.
     ///
     func connectionController() -> ChatConnectionController {
-        .init(client: self)
+        .init(connectionRepository: connectionRepository, webSocketClient: webSocketClient, client: self)
     }
 }
 
@@ -19,17 +19,11 @@ public extension ChatClient {
 /// connect/disconnect the `ChatClient` and observe connection events.
 public class ChatConnectionController: Controller, DelegateCallable, DataStoreProvider {
     public var callbackQueue: DispatchQueue = .main
-    
-    /// The `ChatClient` instance this controller belongs to.
-    public let client: ChatClient
-    
-    private let environment: Environment
-    
+
     var _basePublishers: Any?
     /// An internal backing object for all publicly available Combine publishers. We use it to simplify the way we expose
     /// publishers. Instead of creating custom `Publisher` types, we use `CurrentValueSubject` and `PassthroughSubject` internally,
     /// and expose the published values by mapping them to a read-only `AnyPublisher` type.
-    @available(iOS 13, *)
     var basePublishers: BasePublishers {
         if let value = _basePublishers as? BasePublishers {
             return value
@@ -37,7 +31,7 @@ public class ChatConnectionController: Controller, DelegateCallable, DataStorePr
         _basePublishers = BasePublishers(controller: self)
         return _basePublishers as? BasePublishers ?? .init(controller: self)
     }
-    
+
     /// The current connection status of the client.
     ///
     /// To observe changes of the connection status, set your class as a delegate of this controller or use the provided
@@ -46,14 +40,18 @@ public class ChatConnectionController: Controller, DelegateCallable, DataStorePr
     public var connectionStatus: ConnectionStatus {
         client.connectionStatus
     }
-    
+
     /// The connection event observer for the connection status updates.
     private var connectionEventObserver: ConnectionEventObserver?
 
     /// A type-erased delegate.
     var multicastDelegate: MulticastDelegate<ChatConnectionControllerDelegate> = .init()
 
-    private lazy var chatClientUpdater = environment.chatClientUpdaterBuilder(client)
+    private let connectionRepository: ConnectionRepository
+    private let webSocketClient: WebSocketClient?
+
+    /// The `ChatClient` instance this controller belongs to.
+    public let client: ChatClient
 
     /// Creates a new `ChatConnectionControllerGeneric`.
     ///
@@ -61,14 +59,15 @@ public class ChatConnectionController: Controller, DelegateCallable, DataStorePr
     ///   - client: The `Client` instance this controller belongs to.
     ///   - environment: The source of internal dependencies
     ///
-    init(client: ChatClient, environment: Environment = .init()) {
+    init(connectionRepository: ConnectionRepository, webSocketClient: WebSocketClient?, client: ChatClient) {
+        self.connectionRepository = connectionRepository
+        self.webSocketClient = webSocketClient
         self.client = client
-        self.environment = environment
         connectionEventObserver = setupObserver()
     }
-    
+
     private func setupObserver() -> ConnectionEventObserver? {
-        guard let webSocketClient = client.webSocketClient else { return nil }
+        guard let webSocketClient = webSocketClient else { return nil }
         let observer = ConnectionEventObserver(
             notificationCenter: webSocketClient.eventNotificationCenter
         ) { [weak self] status in
@@ -93,8 +92,8 @@ public extension ChatConnectionController {
     /// called with an error.
     ///
     func connect(completion: ((Error?) -> Void)? = nil) {
-        chatClientUpdater.connect { error in
-            self.callback {
+        connectionRepository.connect { [weak self] error in
+            self?.callback {
                 completion?(error)
             }
         }
@@ -103,17 +102,9 @@ public extension ChatConnectionController {
     /// Disconnects the chat client the controller represents from the chat servers.
     /// No further updates from the servers are received.
     func disconnect() {
-        chatClientUpdater.disconnect(source: .userInitiated) {
+        connectionRepository.disconnect(source: .userInitiated) {
             log.info("The `ChatClient` has been disconnected.", subsystems: .webSocket)
         }
-    }
-}
-
-// MARK: - Environment
-
-extension ChatConnectionController {
-    struct Environment {
-        var chatClientUpdaterBuilder = ChatClientUpdater.init
     }
 }
 

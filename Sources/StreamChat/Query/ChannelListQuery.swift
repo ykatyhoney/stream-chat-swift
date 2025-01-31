@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -15,15 +15,20 @@ public extension Filter where Scope: AnyChannelListFilterScope {
     static func containMembers(userIds: [UserId]) -> Filter<Scope> {
         .in(.members, values: userIds)
     }
-    
+
     /// Filter to match channels containing at least one message.
     static var nonEmpty: Filter<Scope> {
         .greater(.lastMessageAt, than: Date(timeIntervalSince1970: 0))
     }
-    
+
     /// Filter to match channels that are not related to any team.
     static var noTeam: Filter<Scope> {
         .equal(.team, to: nil)
+    }
+
+    /// Filter for fetching only the unread channels.
+    static var hasUnread: Filter<Scope> {
+        .equal(.hasUnread, to: true)
     }
 }
 
@@ -41,12 +46,6 @@ extension Filter where Scope: AnyChannelListFilterScope {
     }
 }
 
-// We don't want to expose `members` publicly because it can't be used with any other operator
-// then `$in`. We expose it publicly via the `containMembers` filter helper.
-extension FilterKey where Scope: AnyChannelListFilterScope {
-    static var members: FilterKey<Scope, UserId> { "members" }
-}
-
 /// Filter values to be used with `.invite` FilterKey.
 public enum InviteFilterValue: String, FilterValue {
     case pending
@@ -58,80 +57,175 @@ public enum InviteFilterValue: String, FilterValue {
 public extension FilterKey where Scope: AnyChannelListFilterScope {
     /// A filter key for matching the `cid` value.
     /// Supported operators: `in`, `equal`
-    static var cid: FilterKey<Scope, ChannelId> { "cid" }
-    
+    static var cid: FilterKey<Scope, ChannelId> { .init(rawValue: "cid", keyPathString: #keyPath(ChannelDTO.cid), valueMapper: { $0.rawValue }) }
+
     /// A filter key for matching the `id` value.
     /// Supported operators: `in`, `equal`
     /// - Warning: Querying by the channel Identifier should be done using the `cid` field as much as possible to optimize API performance.
     /// As the full channel ID, `cid`s are indexed everywhere in Stream database where `id` is not.
-    static var id: FilterKey<Scope, String> { "id" }
-    
+    static var id: FilterKey<Scope, String> { .init(rawValue: "id", keyPathString: #keyPath(ChannelDTO.cid)) }
+
     /// A filter key for matching the `name` value.
-    static var name: FilterKey<Scope, String> { "name" }
-    
+    static var name: FilterKey<Scope, String> { .init(rawValue: "name", keyPathString: #keyPath(ChannelDTO.name)) }
+
     /// A filter key for matching the `image` value.
-    static var imageURL: FilterKey<Scope, URL> { "image" }
-    
+    static var imageURL: FilterKey<Scope, URL> { .init(rawValue: "image", keyPathString: #keyPath(ChannelDTO.imageURL)) }
+
     /// A filter key for matching the `type` value.
     /// Supported operators: `in`, `equal`
-    static var type: FilterKey<Scope, ChannelType> { "type" }
-    
+    static var type: FilterKey<Scope, ChannelType> { .init(rawValue: "type", keyPathString: #keyPath(ChannelDTO.typeRawValue), valueMapper: { $0.rawValue }) }
+
     /// A filter key for matching the `lastMessageAt` value.
     /// Supported operators: `equal`, `greaterThan`, `lessThan`, `greaterOrEqual`, `lessOrEqual`, `notEqual`
-    static var lastMessageAt: FilterKey<Scope, Date> { "last_message_at" }
-    
+    static var lastMessageAt: FilterKey<Scope, Date> { .init(rawValue: "last_message_at", keyPathString: #keyPath(ChannelDTO.lastMessageAt)) }
+
     /// A filter key for matching the `createdBy` value.
     /// Supported operators: `equal`
-    static var createdBy: FilterKey<Scope, UserId> { "created_by_id" }
+    static var createdBy: FilterKey<Scope, UserId> { .init(rawValue: "created_by_id", keyPathString: #keyPath(ChannelDTO.createdBy.id)) }
     
     /// A filter key for matching the `createdAt` value.
-    /// Supported operators: `equal`, `greaterThan`, `lessThan`, `greaterOrEqual`, `lessOrEqual`, `notEqual`
-    static var createdAt: FilterKey<Scope, Date> { "created_at" }
-    
+    /// Supported operators: `equal`, `greaterThan`, `lessThan`, `greaterOrEqual`, `lessOrEqual`, `exists`
+    static var createdAt: FilterKey<Scope, Date> { .init(rawValue: "created_at", keyPathString: #keyPath(ChannelDTO.createdAt)) }
+
     /// A filter key for matching the `updatedAt` value.
-    /// Supported operators: `equal`, `greaterThan`, `lessThan`, `greaterOrEqual`, `lessOrEqual`, `notEqual`
-    static var updatedAt: FilterKey<Scope, Date> { "updated_at" }
-    
+    /// Supported operators: `equal`, `greaterThan`, `lessThan`, `greaterOrEqual`, `lessOrEqual`
+    static var updatedAt: FilterKey<Scope, Date> { .init(rawValue: "updated_at", keyPathString: #keyPath(ChannelDTO.updatedAt)) }
+
     /// A filter key for matching the `deletedAt` value.
     /// Supported operators: `equal`, `greaterThan`, `lessThan`, `greaterOrEqual`, `lessOrEqual`, `notEqual`
-    static var deletedAt: FilterKey<Scope, Date> { "deleted_at" }
-    
+    static var deletedAt: FilterKey<Scope, Date> { .init(rawValue: "deleted_at", keyPathString: #keyPath(ChannelDTO.deletedAt)) }
+
     /// A filter key for querying hidden channels.
     /// Supported operators: `equal`
-    static var hidden: FilterKey<Scope, Bool> { "hidden" }
-    
+    // TODO: should it be using the ChannelPayload.isHidden or ChannelPayload.channel.isHidden
+    static var hidden: FilterKey<Scope, Bool> { .init(rawValue: "hidden", keyPathString: #keyPath(ChannelDTO.isHidden)) }
+
     /// A filter key for matching the `frozen` value.
     /// Supported operators: `equal`
-    static var frozen: FilterKey<Scope, Bool> { "frozen" }
-
-    /// A filter key for matching the `memberCount` value.
-    /// Supported operators: `equal`, `greaterThan`, `lessThan`, `greaterOrEqual`, `lessOrEqual`, `notEqual`
-    static var memberCount: FilterKey<Scope, Int> { "member_count" }
+    static var frozen: FilterKey<Scope, Bool> { .init(rawValue: "frozen", keyPathString: #keyPath(ChannelDTO.isFrozen)) }
     
+    /// A filter key for querying disabled channels.
+    /// Supported operators: `equal`
+    static var disabled: FilterKey<Scope, Bool> { .init(rawValue: "disabled", keyPathString: #keyPath(ChannelDTO.isDisabled)) }
+    
+    /// A filter key for matching the `blocked` value.
+    /// Supported operators: `equal`
+    static var blocked: FilterKey<Scope, Bool> { .init(rawValue: "blocked", keyPathString: #keyPath(ChannelDTO.isBlocked)) }
+    
+    /// A filter key for matching the `archived` value.
+    /// Supported operators: `equal`
+    static var archived: FilterKey<Scope, Bool> {
+        .init(
+            rawValue: "archived",
+            keyPathString: #keyPath(ChannelDTO.membership.archivedAt),
+            predicateMapper: { op, archived in
+                switch op {
+                case .equal:
+                    let key = #keyPath(ChannelDTO.membership.archivedAt)
+                    return NSPredicate(format: archived ? "\(key) != nil" : "\(key) == nil")
+                default:
+                    return nil
+                }
+            }
+        )
+    }
+    
+    /// A filter key for matching the `pinned` value.
+    /// Supported operators: `equal`
+    static var pinned: FilterKey<Scope, Bool> {
+        .init(
+            rawValue: "pinned",
+            keyPathString: #keyPath(ChannelDTO.membership.pinnedAt),
+            predicateMapper: { op, pinned in
+                switch op {
+                case .equal:
+                    let key = #keyPath(ChannelDTO.membership.pinnedAt)
+                    return NSPredicate(format: pinned ? "\(key) != nil" : "\(key) == nil")
+                default:
+                    return nil
+                }
+            }
+        )
+    }
+
+    /// A filter key for matching channel members.
+    /// Supported operators: `in`, `equal`
+    static var members: FilterKey<Scope, UserId> { .init(rawValue: "members", keyPathString: #keyPath(ChannelDTO.members.user.id)) }
+    
+    /// A filter key for matching the `memberCount` value.
+    /// Supported operators: `equal`, `greaterThan`, `lessThan`, `greaterOrEqual`, `lessOrEqual`
+    static var memberCount: FilterKey<Scope, Int> { .init(rawValue: "member_count", keyPathString: #keyPath(ChannelDTO.memberCount)) }
+
     /// A filter key for matching the `team` value.
     /// Supported operators: `equal`
-    static var team: FilterKey<Scope, TeamId?> { "team" }
-    
+    static var team: FilterKey<Scope, TeamId?> { .init(rawValue: "team", keyPathString: #keyPath(ChannelDTO.team)) }
+
     /// Filter for checking whether current user is joined the channel or not (through invite or directly)
-    /// Supported operators: `equal`
-    static var joined: FilterKey<Scope, Bool> { "joined" }
-    
+    /// Supported operators: `equal`.
+    static var joined: FilterKey<Scope, Bool> { .init(
+        rawValue: "joined",
+        keyPathString: #keyPath(ChannelDTO.membership),
+        predicateMapper: { op, joined in
+            let key = #keyPath(ChannelDTO.membership)
+            switch op {
+            case .equal:
+                return NSPredicate(format: joined ? "\(key) != nil" : "\(key) == nil")
+            default:
+                return nil
+            }
+        }
+    ) }
+
     /// Filter for checking whether current user has muted the channel
-    /// Supported operators: `equal`
-    static var muted: FilterKey<Scope, Bool> { "muted" }
-    
+    /// Supported operators: `equal`.
+    static var muted: FilterKey<Scope, Bool> { .init(
+        rawValue: "muted",
+        keyPathString: #keyPath(ChannelDTO.mute),
+        predicateMapper: { op, muted in
+            let key = #keyPath(ChannelDTO.mute)
+            switch op {
+            case .equal:
+                return NSPredicate(format: muted ? "\(key) != nil" : "\(key) == nil")
+            default:
+                return nil
+            }
+        }
+    ) }
+
     /// Filter for checking the status of the invite
     /// Supported operators: `equal`
     static var invite: FilterKey<Scope, InviteFilterValue> { "invite" }
-    
+
     /// Filter for checking the `name` property of a user who is a member of the channel
-    /// Supported operators: `equal`, `notEqual`, `autocomplete`
+    /// Supported operators: `equal`, `autocomplete`
     /// - Warning: This filter is considerably expensive for the backend so avoid using this when possible.
-    static var memberName: FilterKey<Scope, String> { "member.user.name" }
-    
+    static var memberName: FilterKey<Scope, String> { .init(rawValue: "member.user.name", keyPathString: #keyPath(ChannelDTO.members.user.name), isCollectionFilter: true) }
+
     /// Filter for the time of the last message in the channel. If the channel has no messages, then the time the channel was created.
-    /// Supported operators: `equal`, `greaterThan`, `lessThan`, `greaterOrEqual`, `lessOrEqual`, `notEqual`
-    static var lastUpdatedAt: FilterKey<Scope, Date> { "last_updated" }
+    /// Supported operators: `equal`, `greaterThan`, `lessThan`, `greaterOrEqual`, `lessOrEqual`
+    static var lastUpdatedAt: FilterKey<Scope, Date> { .init(rawValue: "last_updated", keyPathString: #keyPath(ChannelDTO.lastMessageAt)) }
+}
+
+/// Internal filter queries for the channel list.
+/// These ones are helpers that should be used by an higher-level filter.
+internal extension FilterKey where Scope: AnyChannelListFilterScope {
+    /// Filter for fetching only the unread channels.
+    /// Supported operators: `equal`, and only `true` is supported.
+    static var hasUnread: FilterKey<Scope, Bool> {
+        .init(
+            rawValue: "has_unread",
+            keyPathString: nil,
+            predicateMapper: { op, hasUnread in
+                let key = #keyPath(ChannelDTO.currentUserUnreadMessagesCount)
+                switch op {
+                case .equal:
+                    return NSPredicate(format: hasUnread ? "\(key) > 0" : "\(key) <= 0")
+                default:
+                    return nil
+                }
+            }
+        )
+    }
 }
 
 /// A query is used for querying specific channels from backend.
@@ -148,7 +242,7 @@ public struct ChannelListQuery: Encodable {
         case messagesLimit = "message_limit"
         case membersLimit = "member_limit"
     }
-    
+
     /// A filter for the query (see `Filter`).
     public let filter: Filter<ChannelListFilterScope>
     /// A sorting for the query (see `Sorting`).
@@ -161,7 +255,7 @@ public struct ChannelListQuery: Encodable {
     public let membersLimit: Int
     /// Query options.
     public var options: QueryOptions = [.watch]
-    
+
     /// Init a channels query.
     /// - Parameters:
     ///   - filter: a channels filter.
@@ -176,20 +270,20 @@ public struct ChannelListQuery: Encodable {
         membersLimit: Int = .channelMembersPageSize
     ) {
         self.filter = filter
-        self.sort = sort.appendingCidSortingKey()
+        self.sort = sort
         pagination = Pagination(pageSize: pageSize)
         self.messagesLimit = messagesLimit
         self.membersLimit = membersLimit
     }
-    
+
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(filter, forKey: .filter)
-        
+
         if !sort.isEmpty {
             try container.encode(sort, forKey: .sort)
         }
-        
+
         try container.encode(messagesLimit, forKey: .messagesLimit)
         try container.encode(membersLimit, forKey: .membersLimit)
         try options.encode(to: encoder)

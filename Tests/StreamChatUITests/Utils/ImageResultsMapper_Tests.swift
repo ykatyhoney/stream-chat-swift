@@ -1,11 +1,10 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChatUI
 import XCTest
 
-@available(iOS 13.0, *)
 final class ImageResultsMapper_Tests: XCTestCase {
     lazy var fakePlaceholderImage1 = UIImage(systemName: "square.and.arrow.up.circle")!
     lazy var fakePlaceholderImage2 = UIImage(systemName: "square.and.arrow.up.circle.fill")!
@@ -126,6 +125,26 @@ final class ImageResultsMapper_Tests: XCTestCase {
             fakePlaceholderImage2,
             fakePlaceholderImage3,
             fakePlaceholderImage4
+        ])
+    }
+    
+    func test_mapErrorsWithPlaceholders_when2ErrorsBut1Placeholder_then1FailingResultIsDropped() {
+        let results: [Result<UIImage, Error>] = [
+            .success(TestImages.chewbacca.image),
+            .failure(MockError()),
+            .failure(MockError()),
+            .success(TestImages.yoda.image)
+        ]
+
+        let mapper = ImageResultsMapper(results: results)
+        let images = mapper.mapErrors(with: [
+            fakePlaceholderImage1
+        ])
+
+        XCTAssertEqual(images, [
+            TestImages.chewbacca.image,
+            fakePlaceholderImage1,
+            TestImages.yoda.image
         ])
     }
 }

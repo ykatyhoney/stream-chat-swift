@@ -1,43 +1,43 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
-
-import Foundation
-import StreamChat
-
-extension StreamChatWrapper {
-    func refreshingTokenProvider(initialToken: Token, tokenDurationInMinutes: Double) -> TokenProvider {
-        { completion in
-            // Simulate API call delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                let token: Token
-                #if GENERATE_JWT
-                let timeInterval = TimeInterval(tokenDurationInMinutes * 60)
-                let generatedToken = _generateUserToken(
-                    secret: appSecret,
-                    userID: initialToken.userId,
-                    expirationDate: Date().addingTimeInterval(timeInterval)
-                )
-                if generatedToken == nil {
-                    log.warning("Unable to generate token. Falling back to initialToken")
-                }
-                token = generatedToken ?? initialToken
-                #else
-                token = initialToken
-                #endif
-                completion(.success(token))
-            }
-        }
-    }
-}
-
-#if GENERATE_JWT
 
 import CryptoKit
 import Foundation
 import StreamChat
 
-let appSecret = ""
+extension StreamChatWrapper {
+    func refreshingTokenProvider(
+        initialToken: Token,
+        refreshDetails: DemoAppConfig.TokenRefreshDetails
+    ) -> TokenProvider {
+        { completion in
+            // Simulate API call delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                let generatedToken: Token? = _generateUserToken(
+                    secret: refreshDetails.appSecret,
+                    userID: initialToken.userId,
+                    expirationDate: Date().addingTimeInterval(refreshDetails.expirationDuration)
+                )
+
+                if generatedToken == nil {
+                    log.error("Demo App Token Refreshing: Unable to generate token. Using initialToken instead.")
+                }
+
+                let shouldNotFail = refreshDetails.numberOfFailures == 0
+                if shouldNotFail || self.numberOfRefreshTokens >= refreshDetails.numberOfFailures {
+                    print("Demo App Token Refreshing: New token generated successfully.")
+                    let newToken = generatedToken ?? initialToken
+                    completion(.success(newToken))
+                } else {
+                    print("Demo App Token Refreshing: Token refresh failed.")
+                    completion(.failure(ClientError("Token Refresh Failed")))
+                }
+                self.numberOfRefreshTokens += 1
+            }
+        }
+    }
+}
 
 extension Data {
     func urlSafeBase64EncodedString() -> String {
@@ -78,5 +78,3 @@ func _generateUserToken(secret: String, userID: String, expirationDate: Date) ->
     let token = [headerBase64String, payloadBase64String, signatureBase64String].joined(separator: ".")
     return try? Token(rawValue: token)
 }
-
-#endif

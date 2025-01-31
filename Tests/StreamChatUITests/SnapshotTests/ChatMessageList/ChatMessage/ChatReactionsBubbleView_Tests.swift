@@ -1,31 +1,32 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
-import StreamChatTestTools
+@testable import StreamChatTestTools
 @testable import StreamChatUI
+import StreamSwiftTestHelpers
 import XCTest
 
 final class ChatReactionsBubbleView_Tests: XCTestCase {
     func test_defaultAppearance_toLeadingTail() {
         // Create a bubble
         let bubble = ChatReactionsBubbleView().withFixedSize
-        
+
         // Set bubble content
         bubble.tailDirection = .toLeading
-        
+
         // Assert the bubble is rendered correctly
         AssertSnapshot(bubble, variants: .onlyUserInterfaceStyles)
     }
-    
+
     func test_defaultAppearance_toTrailingTail() {
         // Create a bubble
         let bubble = ChatReactionsBubbleView().withFixedSize
-        
+
         // Set bubble content
         bubble.tailDirection = .toTrailing
-        
+
         // Assert the bubble is rendered correctly
         AssertSnapshot(bubble, variants: .onlyUserInterfaceStyles)
     }
@@ -57,7 +58,7 @@ final class ChatReactionsBubbleView_Tests: XCTestCase {
 
         // Create a custom bubble
         let bubble = TestBubble().withFixedSize
-        
+
         // Set tail direction
         bubble.tailDirection = .toLeading
 

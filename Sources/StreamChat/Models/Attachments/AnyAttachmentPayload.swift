@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -31,6 +31,12 @@ public struct AnyAttachmentLocalMetadata {
     /// The original width and height of an image or video attachment in Pixels.
     public var originalResolution: (width: Double, height: Double)?
 
+    /// The duration of a media file
+    public var duration: TimeInterval?
+
+    /// The data that can be used to render a waveform visualisation of an audio file.
+    public var waveformData: [Float]?
+
     public init() {}
 }
 
@@ -38,7 +44,7 @@ public extension AnyAttachmentPayload {
     /// Creates an instance of `AnyAttachmentPayload` with the given payload.
     ///
     /// - Important: This initializer should only be used for attachments already uploaded or not requiring uploading.
-    /// Please use `init(localFileURL:` initializer for attachments requiring uploading.
+    /// Please use `init(localFileURL:customPayload:)` initializer for custom attachments requiring uploading.
     ///
     /// If attached to the new message the attachment with the given payload will be immediately
     /// available on `ChatMessage` with the `uploadingState == nil` since it doesn't require prior
@@ -50,6 +56,27 @@ public extension AnyAttachmentPayload {
             type: Payload.type,
             payload: payload,
             localFileURL: nil
+        )
+    }
+
+    /// Creates an instance of `AnyAttachmentPayload` with the given custom payload and local file url.
+    /// Use this initialiser if you want to create a custom attachment which will be lazily uploaded after creating a message.
+    /// You can track the progress of the attachment upload in your custom `AttachmentViewInjector`.
+    ///
+    /// - Important: You will need to inject a `ChatClientConfig.uploadedAttachmentPostProcessor` and update the url of your
+    ///   custom attachment with the given remote url. You should read the docs on how to properly do this here: https://getstream.io/chat/docs/sdk/ios/uikit/guides/working-with-attachments/#tracking-custom-attachment-upload-progress.
+    ///
+    /// - Parameters:
+    ///   - localFileURL: The local file url in the user's device.
+    ///   - customPayload: The custom attachment payload.
+    init<Payload: AttachmentPayload>(
+        localFileURL: URL,
+        customPayload: Payload
+    ) {
+        self.init(
+            type: Payload.type,
+            payload: customPayload,
+            localFileURL: localFileURL
         )
     }
 
@@ -90,6 +117,7 @@ public extension AnyAttachmentPayload {
             payload = ImageAttachmentPayload(
                 title: localFileURL.lastPathComponent,
                 imageRemoteURL: localFileURL,
+                file: file,
                 originalWidth: localMetadata?.originalResolution?.width,
                 originalHeight: localMetadata?.originalResolution?.height,
                 extraData: extraData
@@ -98,6 +126,7 @@ public extension AnyAttachmentPayload {
             payload = VideoAttachmentPayload(
                 title: localFileURL.lastPathComponent,
                 videoRemoteURL: localFileURL,
+                thumbnailURL: nil,
                 file: file,
                 extraData: extraData
             )
@@ -115,6 +144,15 @@ public extension AnyAttachmentPayload {
                 file: file,
                 extraData: extraData
             )
+        case .voiceRecording:
+            payload = VoiceRecordingAttachmentPayload(
+                title: localFileURL.lastPathComponent,
+                voiceRecordingRemoteURL: localFileURL,
+                file: file,
+                duration: localMetadata?.duration,
+                waveformData: localMetadata?.waveformData,
+                extraData: extraData
+            )
         default:
             throw ClientError.UnsupportedUploadableAttachmentType(attachmentType)
         }
@@ -128,10 +166,10 @@ public extension AnyAttachmentPayload {
 }
 
 extension ClientError {
-    public class UnsupportedUploadableAttachmentType: ClientError {
+    public final class UnsupportedUploadableAttachmentType: ClientError {
         init(_ type: AttachmentType) {
             super.init(
-                "For uploadable attachments only .image/.file/.video types are supported."
+                "For uploadable attachments only image/video/audio/file/voiceRecording types are supported."
             )
         }
     }
@@ -142,13 +180,39 @@ extension AttachmentPayload {
         guard case let .dictionary(payload) = try RawJSON(from: decoder) else {
             throw ClientError.AttachmentDecoding("Failed to decode extra data.")
         }
-        
+
         let customPayload = payload.removingValues(
             forKeys:
             AttachmentCodingKeys.allCases.map(\.rawValue) +
                 AttachmentFile.CodingKeys.allCases.map(\.rawValue)
         )
-        
+
         return customPayload.isEmpty ? nil : customPayload
+    }
+}
+
+extension ChatMessageAttachment<Data> {
+    func toAnyAttachmentPayload() -> AnyAttachmentPayload? {
+        let types = ChatClient.attachmentTypesRegistry
+        guard let payloadType = types[type] else { return nil }
+        guard let payload = try? JSONDecoder.default.decode(
+            payloadType,
+            from: self.payload
+        ) else {
+            return nil
+        }
+
+        // If the attachment is local, we should create the payload as a local file
+        if let uploadingState = self.uploadingState, uploadingState.state != .uploaded {
+            return AnyAttachmentPayload(type: type, payload: payload, localFileURL: uploadingState.localFileURL)
+        }
+
+        return AnyAttachmentPayload(payload: payload)
+    }
+}
+
+public extension Array where Element == ChatMessageAttachment<Data> {
+    func toAnyAttachmentPayload() -> [AnyAttachmentPayload] {
+        compactMap { $0.toAnyAttachmentPayload() }
     }
 }

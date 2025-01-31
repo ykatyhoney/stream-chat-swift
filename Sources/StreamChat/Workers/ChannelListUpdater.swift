@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
@@ -19,9 +19,20 @@ class ChannelListUpdater: Worker {
         fetch(channelListQuery: channelListQuery) { [weak self] in
             switch $0 {
             case let .success(channelListPayload):
+                let isInitialFetch = channelListQuery.pagination.cursor == nil && channelListQuery.pagination.offset == 0
+                var initialActions: ((DatabaseSession) -> Void)?
+                if isInitialFetch {
+                    initialActions = { session in
+                        let filterHash = channelListQuery.filter.filterHash
+                        guard let queryDTO = session.channelListQuery(filterHash: filterHash) else { return }
+                        queryDTO.channels.removeAll()
+                    }
+                }
+
                 self?.writeChannelListPayload(
                     payload: channelListPayload,
                     query: channelListQuery,
+                    initialActions: initialActions,
                     completion: completion
                 )
             case let .failure(error):
@@ -30,61 +41,57 @@ class ChannelListUpdater: Worker {
         }
     }
 
-    func resetChannelsQuery(
-        for query: ChannelListQuery,
-        pageSize: Int,
-        watchedAndSynchedChannelIds: Set<ChannelId>,
-        synchedChannelIds: Set<ChannelId>,
-        completion: @escaping (Result<(synchedAndWatched: [ChatChannel], unwanted: Set<ChannelId>), Error>) -> Void
-    ) {
-        var updatedQuery = query
-        updatedQuery.pagination = .init(pageSize: pageSize, offset: 0)
-
-        var unwantedCids = Set<ChannelId>()
-        // Fetches the channels matching the query, and stores them in the database.
-        apiClient.recoveryRequest(endpoint: .channels(query: query)) { [weak self] result in
+    func refreshLoadedChannels(for query: ChannelListQuery, channelCount: Int, completion: @escaping (Result<Set<ChannelId>, Error>) -> Void) {
+        guard channelCount > 0 else {
+            completion(.success(Set()))
+            return
+        }
+        
+        var allPages = [ChannelListQuery]()
+        let pageSize = query.pagination.pageSize > 0 ? query.pagination.pageSize : .channelsPageSize
+        for offset in stride(from: 0, to: channelCount, by: pageSize) {
+            var pageQuery = query
+            pageQuery.pagination = Pagination(pageSize: .channelsPageSize, offset: offset)
+            allPages.append(pageQuery)
+        }
+        refreshLoadedChannels(for: allPages, refreshedChannelIds: Set(), completion: completion)
+    }
+    
+    func refreshLoadedChannels(for query: ChannelListQuery, channelCount: Int) async throws -> Set<ChannelId> {
+        try await withCheckedThrowingContinuation { continuation in
+            refreshLoadedChannels(for: query, channelCount: channelCount) { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+        
+    private func refreshLoadedChannels(for pageQueries: [ChannelListQuery], refreshedChannelIds: Set<ChannelId>, completion: @escaping (Result<Set<ChannelId>, Error>) -> Void) {
+        guard let nextQuery = pageQueries.first else {
+            completion(.success(refreshedChannelIds))
+            return
+        }
+        
+        let remaining = pageQueries.dropFirst()
+        fetch(channelListQuery: nextQuery) { [weak self] result in
             switch result {
-            case let .success(channelListPayload):
+            case .success(let channelListPayload):
                 self?.writeChannelListPayload(
                     payload: channelListPayload,
-                    query: updatedQuery,
-                    initialActions: { session in
-                        guard let queryDTO = session.channelListQuery(filterHash: updatedQuery.filter.filterHash) else { return }
-                        
-                        let localQueryCIDs = Set(queryDTO.channels.compactMap { try? ChannelId(cid: $0.cid) })
-                        let remoteQueryCIDs = Set(channelListPayload.channels.map(\.channel.cid))
-
-                        let updatedChannels = synchedChannelIds.union(watchedAndSynchedChannelIds)
-                        let localNotInRemote = localQueryCIDs.subtracting(remoteQueryCIDs)
-                        let localInRemote = localQueryCIDs.intersection(remoteQueryCIDs)
-
-                        // We unlink those local channels that are no longer in remote
-                        for cid in localNotInRemote {
-                            guard let channelDTO = session.channel(cid: cid) else { continue }
-                            queryDTO.channels.remove(channelDTO)
-                        }
-
-                        // We are going to clean those channels that are present in the both the local and remote query,
-                        // and that have not been synched nor watched. Those are outdated, can contain gaps.
-                        let cidsToClean = localInRemote.subtracting(updatedChannels)
-                        session.cleanChannels(cids: cidsToClean)
-
-                        // We are also going to keep track of the unwanted channels
-                        // Those are the ones that exist locally but we are not interested in anymore in this context.
-                        // In this case, it is going to query local ones not appearing in remote, subtracting the ones
-                        // that are already being watched.
-                        unwantedCids = localNotInRemote.subtracting(watchedAndSynchedChannelIds)
-                    },
-                    completion: { result in
-                        switch result {
-                        case let .success(newSynchedAndWatchedChannels):
-                            completion(.success((newSynchedAndWatchedChannels, unwantedCids)))
-                        case let .failure(error):
+                    query: nextQuery,
+                    completion: { writeResult in
+                        switch writeResult {
+                        case .success(let writtenChannels):
+                            self?.refreshLoadedChannels(
+                                for: Array(remaining),
+                                refreshedChannelIds: refreshedChannelIds.union(writtenChannels.map(\.cid)),
+                                completion: completion
+                            )
+                        case .failure(let error):
                             completion(.failure(error))
                         }
                     }
                 )
-            case let .failure(error):
+            case .failure(let error):
                 completion(.failure(error))
             }
         }
@@ -127,13 +134,53 @@ class ChannelListUpdater: Worker {
             completion: completion
         )
     }
-    
+
     /// Marks all channels for a user as read.
     /// - Parameter completion: Called when the API call is finished. Called with `Error` if the remote update fails.
     func markAllRead(completion: ((Error?) -> Void)? = nil) {
         apiClient.request(endpoint: .markAllRead()) {
             completion?($0.error)
         }
+    }
+
+    /// Links a channel to the given query.
+    func link(channel: ChatChannel, with query: ChannelListQuery, completion: ((Error?) -> Void)? = nil) {
+        database.write { session in
+            guard let (channelDTO, queryDTO) = session.getChannelWithQuery(cid: channel.cid, query: query) else {
+                return
+            }
+            queryDTO.channels.insert(channelDTO)
+        } completion: { error in
+            completion?(error)
+        }
+    }
+
+    /// Unlinks a channel to the given query.
+    func unlink(channel: ChatChannel, with query: ChannelListQuery, completion: ((Error?) -> Void)? = nil) {
+        database.write { session in
+            guard let (channelDTO, queryDTO) = session.getChannelWithQuery(cid: channel.cid, query: query) else {
+                return
+            }
+            queryDTO.channels.remove(channelDTO)
+        } completion: { error in
+            completion?(error)
+        }
+    }
+}
+
+extension DatabaseSession {
+    func getChannelWithQuery(cid: ChannelId, query: ChannelListQuery) -> (ChannelDTO, ChannelListQueryDTO)? {
+        guard let queryDTO = channelListQuery(filterHash: query.filter.filterHash) else {
+            log.debug("Channel list query has not yet created \(query)")
+            return nil
+        }
+
+        guard let channelDTO = channel(cid: cid) else {
+            log.debug("Channel \(cid) cannot be found in database.")
+            return nil
+        }
+
+        return (channelDTO, queryDTO)
     }
 }
 
@@ -156,5 +203,38 @@ private extension ChannelListUpdater {
                 completion?(.success(channels))
             }
         }
+    }
+}
+
+extension ChannelListUpdater {
+    @discardableResult func update(channelListQuery: ChannelListQuery) async throws -> [ChatChannel] {
+        try await withCheckedThrowingContinuation { continuation in
+            update(channelListQuery: channelListQuery) { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+    
+    // MARK: -
+    
+    func loadChannels(query: ChannelListQuery, pagination: Pagination) async throws -> [ChatChannel] {
+        try await update(channelListQuery: query.withPagination(pagination))
+    }
+    
+    func loadNextChannels(
+        query: ChannelListQuery,
+        limit: Int,
+        loadedChannelsCount: Int
+    ) async throws -> [ChatChannel] {
+        let pagination = Pagination(pageSize: limit, offset: loadedChannelsCount)
+        return try await update(channelListQuery: query.withPagination(pagination))
+    }
+}
+
+private extension ChannelListQuery {
+    func withPagination(_ pagination: Pagination) -> Self {
+        var query = self
+        query.pagination = pagination
+        return query
     }
 }

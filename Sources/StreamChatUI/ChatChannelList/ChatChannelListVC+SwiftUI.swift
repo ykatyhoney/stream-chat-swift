@@ -1,11 +1,10 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
 import SwiftUI
 
-@available(iOS 13.0, *)
 // A `UIViewControllerRepresentable` subclass which wraps `ChatChannelListVC` and shows list of channels.
 public typealias ChatChannelList = SwiftUIViewControllerRepresentable<ChatChannelListVC>
 

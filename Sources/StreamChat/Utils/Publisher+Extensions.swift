@@ -1,10 +1,9 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Combine
 
-@available(iOS 13.0, *)
 extension Publisher {
     /// A helper function which attaches the provided object to the publisher chain and keeps it alive as long
     /// as the publisher chain is alive.

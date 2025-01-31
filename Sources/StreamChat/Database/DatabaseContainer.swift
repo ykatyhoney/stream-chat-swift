@@ -1,38 +1,20 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
 import Foundation
 
 /// Convenience subclass of `NSPersistentContainer` allowing easier setup of the database stack.
-class DatabaseContainer: NSPersistentContainer {
+class DatabaseContainer: NSPersistentContainer, @unchecked Sendable {
     enum Kind: Equatable {
         /// The database lives only in memory. This option is used typically for anonymous users, when the local
         /// persistence is not enabled, or in tests.
         case inMemory
-        
+
         /// The database file is stored on the disk and is persisted between application launches.
         case onDisk(databaseFileURL: URL)
     }
-
-    /// A notification with this name is posted by every `NSManagedObjectContext` before all its data is flushed.
-    ///
-    /// This is needed because flushing all data is done by resetting the persistent store, and it's not reflected in the contexts.
-    /// All observers of the context should listen to this notification, and generate a deletion callback when the notification
-    /// is received.
-    ///
-    static let WillRemoveAllDataNotification =
-        Notification.Name(rawValue: "co.getStream.iOSChatSDK.DabaseContainer.WillRemoveAllDataNotification")
-
-    /// A notification with this name is posted by every `NSManagedObjectContext` after all its data is flushed.
-    ///
-    /// This is needed because flushing all data is done by resetting the persistent store, and it's not reflected in the contexts.
-    /// All observers of the context should listen to this notification, and reset all NSFetchedResultControllers observing
-    /// the contexts.
-    ///
-    static let DidRemoveAllDataNotification =
-        Notification.Name(rawValue: "co.getStream.iOSChatSDK.DabaseContainer.DidRemoveAllDataNotification")
 
     /// We use `writableContext` for having just one place to save changes
     /// so it’s not possible to have conflicts when saving payloads from various sources.
@@ -41,14 +23,10 @@ class DatabaseContainer: NSPersistentContainer {
         let context = newBackgroundContext()
         context.automaticallyMergesChangesFromParent = true
         context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-        context.perform { [localCachingSettings, deletedMessageVisibility, shouldShowShadowedMessages] in
-            context.localCachingSettings = localCachingSettings
-            context.deletedMessagesVisibility = deletedMessageVisibility
-            context.shouldShowShadowedMessages = shouldShowShadowedMessages
-        }
+        context.setChatClientConfig(chatClientConfig)
         return context
     }()
-    
+
     /// This is the same thing as `viewContext` only it doesn’t run on main thread.
     /// It’s just an optimization for removing as much as possible from the main thread.
     ///
@@ -61,22 +39,42 @@ class DatabaseContainer: NSPersistentContainer {
         let context = newBackgroundContext()
         context.automaticallyMergesChangesFromParent = true
         context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-        context.perform { [localCachingSettings, deletedMessageVisibility, shouldShowShadowedMessages] in
-            context.localCachingSettings = localCachingSettings
-            context.deletedMessagesVisibility = deletedMessageVisibility
-            context.shouldShowShadowedMessages = shouldShowShadowedMessages
-        }
+        context.setChatClientConfig(chatClientConfig)
         return context
     }()
     
+    /// An immediately reacting NSManagedObjectContext for the chat state layer.
+    ///
+    /// Chat state layer requires that the context is refreshed when a write happens. Otherwise database observers are too slow to react.
+    ///
+    /// For example, here the state.messages needs to react before loadMessages finishes.
+    /// ```swift
+    /// try await chat.loadMessages()
+    /// let messages = chat.state.messages
+    /// ```
+    private(set) lazy var stateLayerContext: NSManagedObjectContext = {
+        let context = newBackgroundContext()
+        // Context is merged manually since automatically is too slow for reacting to changes needed by the state layer
+        context.automaticallyMergesChangesFromParent = false
+        context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        stateLayerContextRefreshObservers = [
+            context.observeChanges(in: writableContext),
+            context.observeChanges(in: viewContext)
+        ]
+        context.setChatClientConfig(chatClientConfig)
+        return context
+    }()
+
+    private var stateLayerContextRefreshObservers = [NSObjectProtocol]()
     private var loggerNotificationObserver: NSObjectProtocol?
-    private let localCachingSettings: ChatClientConfig.LocalCaching?
-    private let deletedMessageVisibility: ChatClientConfig.DeletedMessageVisibility?
-    private let shouldShowShadowedMessages: Bool?
-    
+
+    let chatClientConfig: ChatClientConfig
+
+    static var cachedModels = [String: NSManagedObjectModel]()
+
     /// All `NSManagedObjectContext`s this container owns.
-    private lazy var allContext: [NSManagedObjectContext] = [viewContext, backgroundReadOnlyContext, writableContext]
-    
+    private(set) lazy var allContext: [NSManagedObjectContext] = [viewContext, backgroundReadOnlyContext, stateLayerContext, writableContext]
+
     /// Creates a new `DatabaseContainer` instance.
     ///
     /// The full initialization of the container is asynchronous. Use `completion` to be notified when the container
@@ -91,27 +89,28 @@ class DatabaseContainer: NSPersistentContainer {
     ///
     init(
         kind: Kind,
-        shouldFlushOnStart: Bool = false,
-        shouldResetEphemeralValuesOnStart: Bool = true,
         modelName: String = "StreamChatModel",
         bundle: Bundle? = .streamChat,
-        localCachingSettings: ChatClientConfig.LocalCaching? = nil,
-        deletedMessagesVisibility: ChatClientConfig.DeletedMessageVisibility? = nil,
-        shouldShowShadowedMessages: Bool? = nil
+        chatClientConfig: ChatClientConfig
     ) {
-        // It's safe to unwrap the following values because this is not settable by users and it's always a programmer error.
-        let bundle = bundle ?? Bundle(for: DatabaseContainer.self)
-        let modelURL = bundle.url(forResource: modelName, withExtension: "momd")!
-        let model = NSManagedObjectModel(contentsOf: modelURL)!
-        
-        self.localCachingSettings = localCachingSettings
-        deletedMessageVisibility = deletedMessagesVisibility
-        self.shouldShowShadowedMessages = shouldShowShadowedMessages
+        let managedObjectModel: NSManagedObjectModel
+        if let cachedModel = Self.cachedModels[modelName] {
+            managedObjectModel = cachedModel
+        } else {
+            // It's safe to unwrap the following values because this is not settable by users and it's always a programmer error.
+            let bundle = bundle ?? Bundle(for: DatabaseContainer.self)
+            let modelURL = bundle.url(forResource: modelName, withExtension: "momd")!
+            let model = NSManagedObjectModel(contentsOf: modelURL)!
+            managedObjectModel = model
+            Self.cachedModels[modelName] = model
+        }
 
-        super.init(name: modelName, managedObjectModel: model)
-        
+        self.chatClientConfig = chatClientConfig
+
+        super.init(name: modelName, managedObjectModel: managedObjectModel)
+
         setUpPersistentStoreDescription(with: kind)
-        
+
         let persistentStoreCreatedCompletion: (Error?) -> Void = { [weak self] error in
             if let error = error {
                 log.error("Failed to initialize the local storage with error: \(error). Falling back to the in-memory option.")
@@ -122,79 +121,65 @@ class DatabaseContainer: NSPersistentContainer {
                             "Failed to initialize the in-memory storage with error: \(error). This is a non-recoverable error."
                         )
                     }
-                    if shouldResetEphemeralValuesOnStart {
+                    if chatClientConfig.isClientInActiveMode {
                         self?.resetEphemeralValues()
                     }
                 }
                 return
             }
-            if shouldResetEphemeralValuesOnStart {
+            if chatClientConfig.isClientInActiveMode {
                 self?.resetEphemeralValues()
             }
         }
-                
-        if shouldFlushOnStart {
+
+        if chatClientConfig.shouldFlushLocalStorageOnStart {
             recreatePersistentStore(completion: persistentStoreCreatedCompletion)
         } else {
             setupPersistentStore(completion: persistentStoreCreatedCompletion)
         }
-        
+
         viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
         viewContext.automaticallyMergesChangesFromParent = true
-        if Thread.current.isMainThread {
-            viewContext.localCachingSettings = localCachingSettings
-            viewContext.deletedMessagesVisibility = deletedMessagesVisibility
-            viewContext.shouldShowShadowedMessages = shouldShowShadowedMessages
-        } else {
-            viewContext.perform { [viewContext, localCachingSettings, deletedMessagesVisibility, shouldShowShadowedMessages] in
-                viewContext.localCachingSettings = localCachingSettings
-                viewContext.deletedMessagesVisibility = deletedMessagesVisibility
-                viewContext.shouldShowShadowedMessages = shouldShowShadowedMessages
-            }
-        }
-        
+        viewContext.setChatClientConfig(chatClientConfig)
+
         FetchCache.clear()
-        
+
         setupLoggerForDatabaseChanges()
     }
-    
+
     deinit {
+        stateLayerContextRefreshObservers.forEach { observer in
+            NotificationCenter.default.removeObserver(observer)
+        }
         if let observer = loggerNotificationObserver {
             NotificationCenter.default.removeObserver(observer)
         }
     }
-    
+
     private func setUpPersistentStoreDescription(with kind: Kind) {
         let description = NSPersistentStoreDescription()
-        
+
         switch kind {
         case .inMemory:
-            // So, it seems that on iOS 13, we have to use SQLite store with /dev/null URL, but on iOS 11 & 12
-            // we have to use `NSInMemoryStoreType`. This is not, of course, documented anywhere because no one in
-            // Apple is obviously that crazy, to write tests with CoreData stack.
-            if #available(iOS 13, *) {
-                description.url = URL(fileURLWithPath: "/dev/null")
-            } else {
-                description.type = NSInMemoryStoreType
-            }
-            
-        case let .onDisk(databaseFileURL: databaseFileURL):
+            description.url = URL(fileURLWithPath: "/dev/null")
+
+        case let .onDisk(databaseFileURL):
             description.url = databaseFileURL
         }
-        
+
         persistentStoreDescriptions = [description]
     }
-    
+
     /// Use this method to safely mutate the content of the database. This method is asynchronous.
     ///
     /// - Parameter actions: A block that performs the actual mutation.
     func write(_ actions: @escaping (DatabaseSession) throws -> Void) {
         write(actions, completion: { _ in })
     }
-    
+
     // This 👆 overload shouldn't be needed, but when a default parameter for completion 👇 is used,
     // the compiler gets confused and incorrectly evaluates `write { /* changes */ }`.
-    
+
     /// Use this method to safely mutate the content of the database. This method is asynchronous.
     ///
     /// - Parameters:
@@ -207,14 +192,6 @@ class DatabaseContainer: NSPersistentContainer {
                 FetchCache.clear()
                 try actions(self.writableContext)
                 FetchCache.clear()
-                // If you touch ManagedObject and update one of it properties to same value
-                // Object will be marked as `updated` even it hasn't changed.
-                // By reseting such objects we remove updates that are not updates.
-                for object in self.writableContext.updatedObjects {
-                    if object.changedValues().isEmpty {
-                        self.writableContext.refresh(object, mergeChanges: false)
-                    }
-                }
 
                 if self.writableContext.hasChanges {
                     log.debug("Context has changes. Saving.", subsystems: .database)
@@ -222,52 +199,132 @@ class DatabaseContainer: NSPersistentContainer {
                 } else {
                     log.debug("Context has no changes. Skipping save.", subsystems: .database)
                 }
-                
+
                 log.debug("Database session succesfully saved.", subsystems: .database)
                 completion(nil)
-                
             } catch {
                 log.error("Failed to save data to DB. Error: \(error)", subsystems: .database)
+                self.writableContext.reset()
                 FetchCache.clear()
                 completion(error)
             }
         }
     }
     
-    /// Removes all data from the local storage.
-    ///
-    /// Invoking this method will cause `WillRemoveAllDataNotification` being send by all contexts of the container.
-    ///
-    /// - Warning: ⚠️ This is a non-recoverable operation. All data will be lost after calling this method.
-    ///
-    /// - Parameters:
-    ///   - force: If sets to `false`, the method fails if there are unsynced data in to local storage, for example
-    /// messages pedning sent. You can use this option to warn a user about potential data loss.
-    ///   - completion: Called when the operation is completed. If the error is present, the operation failed.
-    ///
-    func removeAllData(force: Bool = true, completion: ((Error?) -> Void)? = nil) {
-        if !force {
-            fatalError("Non-force flush is not implemented yet.")
+    func write(_ actions: @escaping (DatabaseSession) throws -> Void) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            write(actions) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
         }
+    }
         
-        writableContext.perform {
-            self.sendNotificationForAllContexts(name: Self.WillRemoveAllDataNotification)
-            
-            // If the current persistent store is a SQLite store, this method will reset and recreate it.
-            self.recreatePersistentStore { error in
-                self.sendNotificationForAllContexts(name: Self.DidRemoveAllDataNotification)
-                completion?(error)
+    private func read<T>(
+        from context: NSManagedObjectContext,
+        _ actions: @escaping (DatabaseSession) throws -> T,
+        completion: @escaping (Result<T, Error>) -> Void
+    ) {
+        context.perform {
+            do {
+                let changeCounts = context.currentChangeCounts()
+                let results = try actions(context)
+                if changeCounts != context.currentChangeCounts() {
+                    assertionFailure("Context is read only, but actions created changes: (updated=\(context.updatedObjects), inserted=\(context.insertedObjects), deleted=\(context.deletedObjects)")
+                }
+                completion(.success(results))
+            } catch {
+                completion(.failure(error))
             }
         }
     }
     
-    private func sendNotificationForAllContexts(name: Notification.Name) {
-        // Make sure the notifications are sent synchronously on the main thread to give enough time to notification
-        // listeners to react on it.
-        DispatchQueue.performSynchronouslyOnMainQueue {
-            allContext.forEach {
-                NotificationCenter.default.post(.init(name: name, object: $0, userInfo: nil))
+    func read<T>(_ actions: @escaping (DatabaseSession) throws -> T, completion: @escaping (Result<T, Error>) -> Void) {
+        read(from: backgroundReadOnlyContext, actions, completion: completion)
+    }
+    
+    func read<T>(_ actions: @escaping (DatabaseSession) throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            read(from: stateLayerContext, actions) { result in
+                continuation.resume(with: result)
             }
+        }
+    }
+    
+    func readAndWait<T>(_ actions: (DatabaseSession) throws -> T) throws -> T {
+        let context = backgroundReadOnlyContext
+        var result: T?
+        var readError: Error?
+        context.performAndWait {
+            do {
+                result = try actions(context)
+            } catch {
+                readError = error
+            }
+        }
+        if let result {
+            return result
+        } else {
+            throw readError ?? ClientError.Unknown()
+        }
+    }
+
+    /// Removes all data from the local storage.
+    func removeAllData(completion: ((Error?) -> Void)? = nil) {
+        let entityNames = managedObjectModel.entities.compactMap(\.name)
+        writableContext.perform { [weak self] in
+            let requests = entityNames
+                .map { NSFetchRequest<NSFetchRequestResult>(entityName: $0) }
+                .map { fetchRequest in
+                    let batchDelete = NSBatchDeleteRequest(fetchRequest: fetchRequest)
+                    batchDelete.resultType = .resultTypeObjectIDs
+                    return batchDelete
+                }
+            var lastEncounteredError: Error?
+            var deletedObjectIds = [NSManagedObjectID]()
+            for request in requests {
+                do {
+                    let result = try self?.writableContext.execute(request) as? NSBatchDeleteResult
+                    if let objectIds = result?.result as? [NSManagedObjectID] {
+                        deletedObjectIds.append(contentsOf: objectIds)
+                    }
+                } catch {
+                    log.error("Batch delete request failed with error \(error)")
+                    lastEncounteredError = error
+                }
+            }
+            if !deletedObjectIds.isEmpty, let contexts = self?.allContext {
+                log.debug("Merging \(deletedObjectIds.count) deletions to contexts", subsystems: .database)
+                // Merging changes triggers DB observers to react to deletions which clears the state
+                NSManagedObjectContext.mergeChanges(
+                    fromRemoteContextSave: [NSDeletedObjectsKey: deletedObjectIds],
+                    into: contexts
+                )
+            }
+            // Finally reset states of all the contexts after batch delete and deletion propagation.
+            if let writableContext = self?.writableContext, let allContext = self?.allContext {
+                writableContext.invalidateCurrentUserCache()
+                writableContext.reset()
+                
+                for context in allContext where context != writableContext {
+                    context.performAndWait {
+                        context.invalidateCurrentUserCache()
+                        context.reset()
+                    }
+                }
+                
+                if FileManager.default.fileExists(atPath: URL.streamAttachmentDownloadsDirectory.path) {
+                    do {
+                        try FileManager.default.removeItem(at: .streamAttachmentDownloadsDirectory)
+                    } catch {
+                        log.debug("Failed to remove local downloads", subsystems: .database)
+                    }
+                }
+            }
+            completion?(lastEncounteredError)
         }
     }
 
@@ -280,7 +337,7 @@ class DatabaseContainer: NSPersistentContainer {
                 queue: nil
             ) { log.debug("Data saved to DB: \(String(describing: $0.userInfo))", subsystems: .database) }
     }
-    
+
     /// Tries to load a persistent store.
     ///
     /// If it fails, for example because of non-matching models, it removes the store, recreates is, and tries to load it again.
@@ -295,7 +352,7 @@ class DatabaseContainer: NSPersistentContainer {
             }
         }
     }
-    
+
     /// Removes the loaded persistent store and tries to recreate it.
     func recreatePersistentStore(completion: ((Error?) -> Void)? = nil) {
         log.assert(
@@ -303,12 +360,12 @@ class DatabaseContainer: NSPersistentContainer {
             "DatabaseContainer always assumes 1 persistent store description. Existing descriptions: \(persistentStoreDescriptions)",
             subsystems: .database
         )
-        
+
         guard let storeDescription = persistentStoreDescriptions.first else {
             completion?(ClientError("No persistent store descriptions available."))
             return
         }
-        
+
         log.debug("Removing DB persistent store", subsystems: .database)
 
         // Remove all loaded persistent stores first
@@ -320,9 +377,9 @@ class DatabaseContainer: NSPersistentContainer {
             completion?(error)
             return
         }
-        
+
         log.debug("Removing DB file", subsystems: .database)
-        
+
         // If the store was SQLite store, remove the actual DB file
         if storeDescription.type == NSSQLiteStoreType,
            let storeURL = storeDescription.url,
@@ -334,9 +391,9 @@ class DatabaseContainer: NSPersistentContainer {
                 return
             }
         }
-        
+
         log.debug("Reloading persistent store", subsystems: .database)
-        
+
         loadPersistentStores { _, error in
             if let error = error {
                 log.error("Persistent store reload error: \(error)")
@@ -346,18 +403,45 @@ class DatabaseContainer: NSPersistentContainer {
             completion?(error)
         }
     }
-    
-    /// Iterates over all items and if the DTO conforms to `EphemeralValueContainers` calls `resetEphemeralValues()` on
-    /// every object.
+
+    /// Resets property values tied to container's lifetime.
+    ///
+    /// - Note: CoreData's transient property feature is not used due to lack of support in predicates.
+    /// - Important: Batch updates can't be used for relationships, therefore DTOs need to be loaded.
     func resetEphemeralValues() {
         writableContext.performAndWait {
-            do {
-                try self.managedObjectModel.entities.forEach { entityDescription in
-                    guard let entityName = entityDescription.name else { return }
-                    let fetchRequest: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: entityName)
-                    let entities = try writableContext.fetch(fetchRequest) as? [EphemeralValuesContainer]
-                    entities?.forEach { $0.resetEphemeralValues() }
+            let dtoClasses = managedObjectModel.entities
+                .compactMap(\.name)
+                .compactMap { NSClassFromString($0) }
+            
+            // Reset relationships
+            for dtoClass in dtoClasses {
+                dtoClass.resetEphemeralRelationshipValues?(in: writableContext)
+            }
+            
+            // Reset properties without relationships
+            let allRequests: [NSBatchUpdateRequest] = dtoClasses
+                .compactMap { $0.resetEphemeralValuesBatchRequests?() }
+                .flatMap { $0 }
+            var updatedObjectIDs = [NSManagedObjectID]()
+            allRequests.forEach { request in
+                do {
+                    request.resultType = .updatedObjectIDsResultType
+                    let result = try writableContext.execute(request) as? NSBatchUpdateResult
+                    if let ids = result?.result as? [NSManagedObjectID] {
+                        updatedObjectIDs.append(contentsOf: ids)
+                    }
+                } catch {
+                    log.error("Resetting values failed with error \(error)", subsystems: .database)
                 }
+            }
+            guard !updatedObjectIDs.isEmpty else { return }
+            log.debug("Merging \(updatedObjectIDs.count) ephemeral updates to contexts", subsystems: .database)
+            NSManagedObjectContext.mergeChanges(
+                fromRemoteContextSave: [NSUpdatedObjectsKey: updatedObjectIDs],
+                into: self.allContext
+            )
+            do {
                 FetchCache.clear()
                 try writableContext.save()
                 log.debug("Ephemeral values reset.", subsystems: .database)
@@ -366,5 +450,50 @@ class DatabaseContainer: NSPersistentContainer {
                 log.error("Error resetting ephemeral values: \(error)", subsystems: .database)
             }
         }
+    }
+}
+
+extension NSManagedObjectContext {
+    /// Discards any changes on the passed object that are pending to be saved.
+    func discardChanges(for object: NSManagedObject) {
+        refresh(object, mergeChanges: false)
+    }
+
+    func discardCurrentChanges() {
+        insertedObjects.forEach { discardChanges(for: $0) }
+        updatedObjects.forEach { discardChanges(for: $0) }
+        deletedObjects.forEach { discardChanges(for: $0) }
+    }
+    
+    fileprivate func currentChangeCounts() -> [String: Int] {
+        [
+            "inserted": insertedObjects.count,
+            "updated": updatedObjects.count,
+            "deleted": deletedObjects.count
+        ]
+    }
+    
+    func observeChanges(in otherContext: NSManagedObjectContext) -> NSObjectProtocol {
+        assert(!automaticallyMergesChangesFromParent, "Duplicate change handling")
+        return NotificationCenter.default
+            .addObserver(
+                forName: Notification.Name.NSManagedObjectContextDidSave,
+                object: otherContext,
+                queue: nil
+            ) { [weak self] notification in
+                guard let self else { return }
+                self.performAndWait {
+                    self.mergeChanges(fromContextDidSave: notification)
+                    // Keep the state clean after merging changes
+                    guard self.hasChanges else { return }
+                    self.perform {
+                        do {
+                            try self.save()
+                        } catch {
+                            log.debug("Failed to save merged changes", subsystems: .database)
+                        }
+                    }
+                }
+            }
     }
 }

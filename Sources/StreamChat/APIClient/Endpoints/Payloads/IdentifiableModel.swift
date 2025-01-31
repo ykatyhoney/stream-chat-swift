@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
@@ -61,4 +61,40 @@ extension ChannelReadDTO: IdentifiableModel {
     static let className: DatabaseType = _className
     static let idKeyPath: String? = nil
     static func id(for model: NSManagedObject) -> DatabaseId? { nil } // Does not have id
+}
+
+extension ThreadDTO: IdentifiableModel {
+    static var className: DatabaseType { _className }
+    static var idKeyPath: String? { #keyPath(ThreadDTO.parentMessageId) }
+    static func id(for model: NSManagedObject) -> DatabaseId? { (model as? Self)?.parentMessageId }
+}
+
+extension ThreadReadDTO: IdentifiableModel {
+    static let className: DatabaseType = _className
+    static let idKeyPath: String? = nil
+    static func id(for model: NSManagedObject) -> DatabaseId? { nil }
+}
+
+extension ThreadParticipantDTO: IdentifiableModel {
+    static let className: DatabaseType = _className
+    static let idKeyPath: String? = #keyPath(MemberDTO.id)
+    static func id(for model: NSManagedObject) -> DatabaseId? { (model as? Self)?.user.id }
+}
+
+extension PollDTO: IdentifiableModel {
+    static var className: DatabaseType { _className }
+    static var idKeyPath: String? { #keyPath(PollDTO.id) }
+    static func id(for model: NSManagedObject) -> DatabaseId? { (model as? Self)?.id }
+}
+
+extension PollOptionDTO: IdentifiableModel {
+    static var className: DatabaseType { _className }
+    static var idKeyPath: String? { #keyPath(PollOptionDTO.id) }
+    static func id(for model: NSManagedObject) -> DatabaseId? { (model as? Self)?.id }
+}
+
+extension PollVoteDTO: IdentifiableModel {
+    static var className: DatabaseType { _className }
+    static var idKeyPath: String? { #keyPath(PollVoteDTO.id) }
+    static func id(for model: NSManagedObject) -> DatabaseId? { (model as? Self)?.id }
 }

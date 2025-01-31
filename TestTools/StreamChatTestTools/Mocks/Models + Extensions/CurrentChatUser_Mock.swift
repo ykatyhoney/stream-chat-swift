@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -17,16 +17,21 @@ public extension CurrentChatUser {
         userRole: UserRole = .user,
         createdAt: Date = .init(),
         updatedAt: Date = .init(),
+        deactivatedAt: Date? = nil,
         lastActiveAt: Date? = nil,
         teams: Set<TeamId> = [],
+        language: TranslationLanguage? = nil,
+        blockedUserIds: Set<UserId> = [],
         extraData: [String: RawJSON] = [:],
         devices: [Device] = [],
         currentDevice: Device? = nil,
         mutedUsers: Set<ChatUser> = [],
+        blockedUsers: Set<BlockedUserDetails> = [],
         flaggedUsers: Set<ChatUser> = [],
         flaggedMessageIDs: Set<MessageId> = [],
         unreadCount: UnreadCount = .noUnread,
-        mutedChannels: Set<ChatChannel> = []
+        mutedChannels: Set<ChatChannel> = [],
+        privacySettings: UserPrivacySettings = .init()
     ) -> CurrentChatUser {
         .init(
             id: id,
@@ -38,17 +43,20 @@ public extension CurrentChatUser {
             userRole: userRole,
             createdAt: createdAt,
             updatedAt: updatedAt,
+            deactivatedAt: deactivatedAt,
             lastActiveAt: lastActiveAt,
             teams: teams,
+            language: language,
             extraData: extraData,
             devices: devices,
             currentDevice: currentDevice,
+            blockedUserIds: blockedUserIds,
             mutedUsers: mutedUsers,
             flaggedUsers: flaggedUsers,
             flaggedMessageIDs: flaggedMessageIDs,
             unreadCount: unreadCount,
-            mutedChannels: { mutedChannels },
-            underlyingContext: nil
+            mutedChannels: mutedChannels,
+            privacySettings: privacySettings
         )
     }
 }

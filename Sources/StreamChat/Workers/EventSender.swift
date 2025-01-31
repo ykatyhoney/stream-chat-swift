@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -19,6 +19,16 @@ class EventSender: Worker {
     ) {
         apiClient.request(endpoint: .sendEvent(payload, cid: cid)) {
             completion?($0.error)
+        }
+    }
+}
+
+extension EventSender {
+    func sendEvent<Payload: CustomEventPayload>(_ payload: Payload, to cid: ChannelId) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            sendEvent(payload, to: cid) { error in
+                continuation.resume(with: error)
+            }
         }
     }
 }

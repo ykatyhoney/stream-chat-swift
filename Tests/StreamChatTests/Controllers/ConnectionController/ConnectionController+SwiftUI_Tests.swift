@@ -1,37 +1,36 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
 @testable import StreamChatTestTools
 import XCTest
 
-@available(iOS 13, *)
 final class ChatConnectionController_SwiftUI_Tests: iOS13TestCase {
     var connectionController: ChatConnectionControllerMock!
-    
+
     override func setUp() {
         super.setUp()
         connectionController = ChatConnectionControllerMock()
     }
-    
+
     override func tearDown() {
         AssertAsync.canBeReleased(&connectionController)
         connectionController = nil
         super.tearDown()
     }
-    
+
     func test_controllerInitialValuesAreLoaded() {
         connectionController.connectionStatus_simulated = .initialized
-        
+
         let observableObject = connectionController.observableObject
-        
+
         XCTAssertEqual(observableObject.connectionStatus, connectionController.connectionStatus)
     }
-    
+
     func test_observableObject_reactsToDelegateConnectionStatusChangesCallback() {
         let observableObject = connectionController.observableObject
-        
+
         // Simulate connection status change
         let newStatus: ConnectionStatus = .connected
         connectionController.delegateCallback {
@@ -40,7 +39,7 @@ final class ChatConnectionController_SwiftUI_Tests: iOS13TestCase {
                 didUpdateConnectionStatus: newStatus
             )
         }
-        
+
         AssertAsync.willBeEqual(observableObject.connectionStatus, newStatus)
     }
 }
@@ -50,8 +49,12 @@ final class ChatConnectionControllerMock: ChatConnectionController {
     override var connectionStatus: ConnectionStatus {
         connectionStatus_simulated ?? super.connectionStatus
     }
-    
+
     init() {
-        super.init(client: .mock)
+        super.init(
+            connectionRepository: ConnectionRepository_Mock(),
+            webSocketClient: WebSocketClient_Mock(),
+            client: ChatClient_Mock(config: ChatClientConfig(apiKeyString: ""))
+        )
     }
 }

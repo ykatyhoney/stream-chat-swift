@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
@@ -13,7 +13,7 @@ final class CommandDTO: NSManagedObject {
     @NSManaged var args: String
 
     func asModel() throws -> Command {
-        guard isValid else { throw InvalidModel(self) }
+        try isNotDeleted()
         return .init(
             name: name,
             description: desc,

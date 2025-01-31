@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -7,13 +7,13 @@ import UIKit
 
 final class BannerShowingConnectionDelegate {
     // MARK: - Private Properties
-    
+
     private let view: UIView
-    private let bannerView = BannerView()
+    private let bannerView = DemoConnectionBannerView()
     private let bannerAppearanceDuration: TimeInterval = 0.5
-    
+
     // MARK: -
-    
+
     init(showUnder view: UIView) {
         self.view = view
         setupViews()
@@ -29,11 +29,14 @@ extension BannerShowingConnectionDelegate: ChatConnectionControllerDelegate {
             bannerView.update(text: "Disconnected")
             showBanner()
         case .connected:
+            bannerView.update(text: "Connected")
             hideBanner()
         case .disconnecting:
             bannerView.update(text: "Disconnecting...")
+            showBanner()
         case .connecting:
             bannerView.update(text: "Connecting...")
+            showBanner()
         case .initialized:
             break
         }
@@ -45,15 +48,15 @@ extension BannerShowingConnectionDelegate: ChatConnectionControllerDelegate {
 private extension BannerShowingConnectionDelegate {
     func setupViews() {
         attachToTopViewIfNeeded()
-        bannerView.alpha = 0
+        bannerView.alpha = 1
         bannerView.update(text: "Connecting...")
     }
-    
+
     func attachToTopViewIfNeeded() {
         guard bannerView.superview != view else { return }
-        
+
         view.addSubview(bannerView)
-        
+
         bannerView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate(
             [
@@ -63,16 +66,16 @@ private extension BannerShowingConnectionDelegate {
             ]
         )
     }
-    
+
     func showBanner() {
         attachToTopViewIfNeeded()
         animateBannerAlpha(to: 1)
     }
-    
+
     func hideBanner() {
         animateBannerAlpha(to: 0)
     }
-    
+
     func animateBannerAlpha(to value: CGFloat) {
         UIView.animate(withDuration: bannerAppearanceDuration) {
             self.bannerView.alpha = value

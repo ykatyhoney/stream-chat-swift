@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import UIKit
@@ -11,14 +11,14 @@ extension UIViewController {
         superview.addSubview(child.view)
         child.didMove(toParent: self)
     }
-    
+
     /// Adds `child` as a child view controller to `self` and as an arranged subview of `ContainerView`.
     func addChildViewController(_ child: UIViewController, targetView superview: ContainerStackView) {
         addChild(child)
         superview.addArrangedSubview(child.view)
         child.didMove(toParent: self)
     }
-    
+
     func addChildViewController(_ child: UIViewController, embedIn superview: UIView) {
         addChild(child)
         child.view.translatesAutoresizingMaskIntoConstraints = false
@@ -41,7 +41,6 @@ extension UIViewController {
     /// Helper method to correctly setup navigation of parent.
     /// Used when view is wrapped using `UIHostingController` and used in SwiftUI
     /// so all properties of `navigationItem` are propagated correctly.
-    @available(iOS 13.0, *)
     func setupParentNavigation(parent: UIViewController) {
         let parentNavItem = parent.navigationItem
 

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -13,8 +13,12 @@ class CurrentUserPayload: UserPayload {
     /// Muted channels.
     let mutedChannels: [MutedChannelPayload]
     /// Unread channel and message counts
-    let unreadCount: UnreadCount?
-    
+    let unreadCount: UnreadCountPayload?
+    /// The current privacy settings of the user.
+    let privacySettings: UserPrivacySettingsPayload?
+    /// Blocked user ids.
+    let blockedUserIds: Set<UserId>
+
     init(
         id: String,
         name: String?,
@@ -22,22 +26,28 @@ class CurrentUserPayload: UserPayload {
         role: UserRole,
         createdAt: Date,
         updatedAt: Date,
+        deactivatedAt: Date?,
         lastActiveAt: Date?,
         isOnline: Bool,
         isInvisible: Bool,
         isBanned: Bool,
         teams: [TeamId] = [],
+        language: String?,
         extraData: [String: RawJSON],
         devices: [DevicePayload] = [],
         mutedUsers: [MutedUserPayload] = [],
         mutedChannels: [MutedChannelPayload] = [],
-        unreadCount: UnreadCount? = nil
+        unreadCount: UnreadCountPayload? = nil,
+        privacySettings: UserPrivacySettingsPayload? = nil,
+        blockedUserIds: Set<UserId> = []
     ) {
         self.devices = devices
         self.mutedUsers = mutedUsers
         self.mutedChannels = mutedChannels
         self.unreadCount = unreadCount
-        
+        self.privacySettings = privacySettings
+        self.blockedUserIds = blockedUserIds
+
         super.init(
             id: id,
             name: name,
@@ -45,21 +55,25 @@ class CurrentUserPayload: UserPayload {
             role: role,
             createdAt: createdAt,
             updatedAt: updatedAt,
+            deactivatedAt: deactivatedAt,
             lastActiveAt: lastActiveAt,
             isOnline: isOnline,
             isInvisible: isInvisible,
             isBanned: isBanned,
             teams: teams,
+            language: language,
             extraData: extraData
         )
     }
-    
+
     required init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: UserPayloadsCodingKeys.self)
         devices = try container.decodeIfPresent([DevicePayload].self, forKey: .devices) ?? []
         mutedUsers = try container.decodeIfPresent([MutedUserPayload].self, forKey: .mutedUsers) ?? []
         mutedChannels = try container.decodeIfPresent([MutedChannelPayload].self, forKey: .mutedChannels) ?? []
-        unreadCount = try? UnreadCount(from: decoder)
+        unreadCount = try? UnreadCountPayload(from: decoder)
+        privacySettings = try container.decodeIfPresent(UserPrivacySettingsPayload.self, forKey: .privacySettings)
+        blockedUserIds = try container.decodeIfPresent(Set<UserId>.self, forKey: .blockedUserIds) ?? []
 
         try super.init(from: decoder)
     }
@@ -72,7 +86,7 @@ struct MutedUserPayload: Decodable {
         case created = "created_at"
         case updated = "updated_at"
     }
-    
+
     let mutedUser: UserPayload
     let created: Date
     let updated: Date
@@ -90,7 +104,7 @@ struct MutedUsersResponse: Decodable {
         case mutedUser = "mute"
         case currentUser = "own_user"
     }
-    
+
     /// A muted user.
     public let mutedUser: MutedUserPayload
     /// The current user.

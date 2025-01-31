@@ -1,17 +1,16 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Combine
 import Foundation
 
-@available(iOS 13, *)
 extension CurrentChatUserController {
     /// A publisher emitting a new value every time the current user changes.
     public var currentUserChangePublisher: AnyPublisher<EntityChange<CurrentChatUser>, Never> {
         basePublishers.currentUserChange.keepAlive(self)
     }
-    
+
     /// A publisher emitting a new value every time the unread count changes..
     public var unreadCountPublisher: AnyPublisher<UnreadCount, Never> {
         basePublishers.unreadCount.keepAlive(self)
@@ -23,23 +22,22 @@ extension CurrentChatUserController {
     class BasePublishers {
         /// The wrapper controller
         unowned let controller: CurrentChatUserController
-        
+
         /// A backing subject for `currentUserChangePublisher`.
         let currentUserChange: PassthroughSubject<EntityChange<CurrentChatUser>, Never> = .init()
-        
+
         /// A backing subject for `unreadCountPublisher`.
         let unreadCount: CurrentValueSubject<UnreadCount, Never>
-                
+
         init(controller: CurrentChatUserController) {
             self.controller = controller
             unreadCount = .init(controller.unreadCount)
-            
+
             controller.multicastDelegate.add(additionalDelegate: self)
         }
     }
 }
 
-@available(iOS 13, *)
 extension CurrentChatUserController.BasePublishers: CurrentChatUserControllerDelegate {
     func currentUserController(
         _ controller: CurrentChatUserController,
@@ -47,7 +45,7 @@ extension CurrentChatUserController.BasePublishers: CurrentChatUserControllerDel
     ) {
         self.unreadCount.send(unreadCount)
     }
-    
+
     func currentUserController(
         _ controller: CurrentChatUserController,
         didChangeCurrentUser currentUser: EntityChange<CurrentChatUser>

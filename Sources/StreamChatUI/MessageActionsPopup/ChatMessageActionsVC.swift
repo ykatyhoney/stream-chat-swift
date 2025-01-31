@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -21,6 +21,16 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
     /// `ChatMessageController` instance used to obtain the message data.
     public var messageController: ChatMessageController!
 
+    /// A boolean value indicating if the actions are being shown inside a thread.
+    public var isInsideThread: Bool = false
+
+    /// The channel which the actions will be performed.
+    public var channel: ChatChannel? {
+        didSet {
+            channelConfig = channel?.config
+        }
+    }
+
     /// `ChannelConfig` that contains the feature flags of the channel.
     public var channelConfig: ChannelConfig!
 
@@ -28,7 +38,7 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
     open var message: ChatMessage? {
         messageController.message
     }
-    
+
     /// The `AlertsRouter` instance responsible for presenting alerts.
     open lazy var alertsRouter = components
         .alertsRouter
@@ -39,14 +49,20 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
     open private(set) lazy var messageActionsContainerStackView = ContainerStackView()
         .withoutAutoresizingMaskConstraints
         .withAccessibilityIdentifier(identifier: "messageActionsContainerStackView")
-    
+
     /// Class used for buttons in `messageActionsContainerView`.
     open var actionButtonClass: ChatMessageActionControl.Type { ChatMessageActionControl.self }
 
     override open func setUpLayout() {
         super.setUpLayout()
 
-        view.embed(messageActionsContainerStackView)
+        view.addSubview(messageActionsContainerStackView)
+        NSLayoutConstraint.activate([
+            messageActionsContainerStackView.leadingAnchor.pin(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            messageActionsContainerStackView.trailingAnchor.pin(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            messageActionsContainerStackView.topAnchor.pin(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            messageActionsContainerStackView.bottomAnchor.pin(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+        ])
         messageActionsContainerStackView.axis = .vertical
         messageActionsContainerStackView.alignment = .fill
         messageActionsContainerStackView.spacing = 1
@@ -56,7 +72,7 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
         messageActionsContainerStackView.isLayoutMarginsRelativeArrangement = true
         messageActionsContainerStackView.layoutMargins = .zero
     }
-    
+
     override open func setUpAppearance() {
         super.setUpAppearance()
         messageActionsContainerStackView.layer.cornerRadius = 16
@@ -75,15 +91,6 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
             actionView.accessibilityIdentifier = "\(type(of: $0))"
         }
     }
-    
-    open var messageActionsForAlertMenu: [ChatMessageActionItem] {
-        var actions = messageActions
-        
-        actions.removeAll(where: { $0 is DeleteActionItem })
-        actions.append(deleteWithoutWarningActionItem())
-        
-        return actions
-    }
 
     /// Array of `ChatMessageActionItem`s - override this to setup your own custom actions
     open var messageActions: [ChatMessageActionItem] {
@@ -91,47 +98,95 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
             let currentUser = messageController.dataStore.currentUser(),
             let message = message,
             message.isDeleted == false
-        else { return [] }
+        else {
+            return []
+        }
 
         switch message.localState {
         case nil:
             var actions: [ChatMessageActionItem] = []
-            
-            if channelConfig.quotesEnabled {
+
+            // If a channel is not set, we fallback to using channelConfig only.
+            let canQuoteMessage = channel?.canQuoteMessage ?? channelConfig.quotesEnabled
+            let canSendReply = channel?.canSendReply ?? channelConfig.repliesEnabled
+            let canReceiveReadEvents = channel?.canReceiveReadEvents ?? channelConfig.readEventsEnabled
+            let canUpdateAnyMessage = channel?.canUpdateAnyMessage ?? false
+            let canUpdateOwnMessage = channel?.canUpdateOwnMessage ?? true
+            let canDeleteAnyMessage = channel?.canDeleteAnyMessage ?? false
+            let canDeleteOwnMessage = channel?.canDeleteOwnMessage ?? true
+            let isSentByCurrentUser = message.isSentByCurrentUser
+
+            if canQuoteMessage {
                 actions.append(inlineReplyActionItem())
             }
 
-            if channelConfig.repliesEnabled && !message.isPartOfThread {
+            if canSendReply && !message.isPartOfThread && !isInsideThread {
                 actions.append(threadReplyActionItem())
             }
 
-            actions.append(copyActionItem())
-
-            if message.isSentByCurrentUser {
-                actions += [editActionItem(), deleteActionItem()]
-
-            } else {
-                actions += [flagActionItem()]
-                
-                if channelConfig.mutesEnabled {
-                    let isMuted = currentUser.mutedUsers.contains(message.author)
-                    actions.append(isMuted ? unmuteActionItem() : muteActionItem())
+            if canReceiveReadEvents {
+                // If message is root of thread, it can be marked unread independent of other logic.
+                if message.isRootOfThread {
+                    actions.append(markUnreadActionItem())
+                    // If the message is in the channel view, only other user messages can be marked unread.
+                } else if !isSentByCurrentUser && (!message.isPartOfThread || message.showReplyInChannel) {
+                    actions.append(markUnreadActionItem())
                 }
             }
 
+            if !message.text.isEmpty {
+                actions.append(copyActionItem())
+            }
+
+            if message.poll == nil {
+                if canUpdateAnyMessage && message.giphyAttachments.isEmpty {
+                    actions.append(editActionItem())
+                } else if canUpdateOwnMessage && message.isSentByCurrentUser && message.giphyAttachments.isEmpty {
+                    actions.append(editActionItem())
+                }
+            }
+
+            if canDeleteAnyMessage {
+                actions.append(deleteActionItem())
+            } else if canDeleteOwnMessage && isSentByCurrentUser {
+                actions.append(deleteActionItem())
+            }
+
+            if !isSentByCurrentUser {
+                actions.append(flagActionItem())
+            }
+
+            if channelConfig.mutesEnabled && !isSentByCurrentUser {
+                let isMuted = currentUser.mutedUsers.map(\.id).contains(message.author.id)
+                actions.append(isMuted ? unmuteActionItem() : muteActionItem())
+            }
+            
+            if components.isBlockingUsersEnabled && !isSentByCurrentUser {
+                let isBlocked = currentUser.blockedUserIds.contains(message.author.id)
+                actions.append(isBlocked ? unblockActionItem() : blockActionItem())
+            }
+
             return actions
-        case .pendingSend, .sendingFailed, .pendingSync, .syncingFailed, .deletingFailed:
+        case .sendingFailed:
             return [
-                (message.localState == .sendingFailed || message.failedToBeSentDueToModeration) ? resendActionItem() : nil,
+                resendActionItem(),
                 editActionItem(),
                 deleteActionItem()
             ]
-            .compactMap { $0 }
-        case .sending, .syncing, .deleting:
-            return []
+        case .pendingSend,
+             .pendingSync,
+             .syncingFailed,
+             .deletingFailed,
+             .sending,
+             .syncing,
+             .deleting:
+            return [
+                editActionItem(),
+                deleteActionItem()
+            ]
         }
     }
-    
+
     /// Returns `ChatMessageActionItem` for edit action
     open func editActionItem() -> ChatMessageActionItem {
         EditActionItem(
@@ -139,7 +194,7 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
             appearance: appearance
         )
     }
-    
+
     /// Returns `ChatMessageActionItem` for delete action
     open func deleteActionItem() -> ChatMessageActionItem {
         DeleteActionItem(
@@ -156,21 +211,7 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
             appearance: appearance
         )
     }
-    
-    /// Returns `ChatMessageActionItem` for delete action without warning
-    open func deleteWithoutWarningActionItem() -> ChatMessageActionItem {
-        DeleteActionItem(
-            action: { [weak self] _ in
-                guard let self = self else { return }
-                
-                self.messageController.deleteMessage { _ in
-                    self.delegate?.chatMessageActionsVCDidFinish(self)
-                }
-            },
-            appearance: appearance
-        )
-    }
-    
+
     /// Returns `ChatMessageActionItem` for resend action.
     open func resendActionItem() -> ChatMessageActionItem {
         ResendActionItem(
@@ -183,7 +224,7 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
             appearance: appearance
         )
     }
-    
+
     /// Returns `ChatMessageActionItem` for mute action.
     open func muteActionItem() -> ChatMessageActionItem {
         MuteUserActionItem(
@@ -200,7 +241,7 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
             appearance: appearance
         )
     }
-    
+
     /// Returns `ChatMessageActionItem` for unmute action.
     open func unmuteActionItem() -> ChatMessageActionItem {
         UnmuteUserActionItem(
@@ -218,6 +259,40 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
         )
     }
     
+    /// Returns `ChatMessageActionItem` for block action.
+    open func blockActionItem() -> ChatMessageActionItem {
+        BlockUserActionItem(
+            action: { [weak self] _ in
+                guard
+                    let self = self,
+                    let author = self.message?.author
+                else { return }
+
+                self.messageController.client
+                    .userController(userId: author.id)
+                    .block { _ in self.delegate?.chatMessageActionsVCDidFinish(self) }
+            },
+            appearance: appearance
+        )
+    }
+
+    /// Returns `ChatMessageActionItem` for unblock action.
+    open func unblockActionItem() -> ChatMessageActionItem {
+        UnblockUserActionItem(
+            action: { [weak self] _ in
+                guard
+                    let self = self,
+                    let author = self.message?.author
+                else { return }
+
+                self.messageController.client
+                    .userController(userId: author.id)
+                    .unblock { _ in self.delegate?.chatMessageActionsVCDidFinish(self) }
+            },
+            appearance: appearance
+        )
+    }
+
     /// Returns `ChatMessageActionItem` for inline reply action.
     open func inlineReplyActionItem() -> ChatMessageActionItem {
         InlineReplyActionItem(
@@ -225,7 +300,7 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
             appearance: appearance
         )
     }
-    
+
     /// Returns `ChatMessageActionItem` for thread reply action.
     open func threadReplyActionItem() -> ChatMessageActionItem {
         ThreadReplyActionItem(
@@ -233,20 +308,36 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
             appearance: appearance
         )
     }
-    
+
+    /// Returns `MarkUnreadActionItem` for copy action.
+    open func markUnreadActionItem() -> ChatMessageActionItem {
+        MarkUnreadActionItem(
+            action: { [weak self] in self?.handleAction($0) },
+            appearance: appearance
+        )
+    }
+
     /// Returns `ChatMessageActionItem` for copy action.
     open func copyActionItem() -> ChatMessageActionItem {
         CopyActionItem(
             action: { [weak self] _ in
                 guard let self = self else { return }
-                UIPasteboard.general.string = self.message?.text
 
+                let text: String?
+                if let currentUserLang = self.channel?.membership?.language,
+                   let translatedText = self.message?.translatedText(for: currentUserLang) {
+                    text = translatedText
+                } else {
+                    text = self.message?.text
+                }
+
+                UIPasteboard.general.string = text
                 self.delegate?.chatMessageActionsVCDidFinish(self)
             },
             appearance: appearance
         )
     }
-    
+
     /// Returns `ChatMessageActionItem` for flag action.
     open func flagActionItem() -> ChatMessageActionItem {
         FlagActionItem(
@@ -254,7 +345,7 @@ open class ChatMessageActionsVC: _ViewController, ThemeProvider {
                 guard let self = self else { return }
                 self.alertsRouter.showMessageFlagConfirmationAlert { confirmed in
                     guard confirmed else { return }
-                    
+
                     self.messageController.flag { _ in
                         self.delegate?.chatMessageActionsVCDidFinish(self)
                     }

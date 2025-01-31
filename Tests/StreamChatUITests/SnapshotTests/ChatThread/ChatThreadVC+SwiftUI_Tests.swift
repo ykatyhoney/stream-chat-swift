@@ -1,17 +1,17 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
 @testable import StreamChatTestTools
 @testable import StreamChatUI
+import StreamSwiftTestHelpers
 import SwiftUI
 import XCTest
 
-@available(iOS 13.0, *)
 final class ChatThreadView_Tests: iOS13TestCase {
     var chatThreadView: SwiftUIViewControllerRepresentable<ChatThreadVC>!
-    
+
     var channelControllerMock: ChatChannelController_Mock!
     var messageControllerMock: ChatMessageController_Mock!
 
@@ -25,7 +25,7 @@ final class ChatThreadView_Tests: iOS13TestCase {
             state: .remoteDataFetched
         )
         messageControllerMock.simulateInitial(
-            message: .mock(id: .unique, cid: .unique, text: "First message", author: .mock(id: .unique)),
+            message: .mock(id: .unique, cid: .unique, text: "First message", author: .mock(id: .unique), replyCount: 3),
             replies: [
                 .mock(
                     id: .unique,
@@ -66,7 +66,7 @@ final class ChatThreadView_Tests: iOS13TestCase {
                     state: .localDataFetched
                 )
                 messageControllerMock.simulateInitial(
-                    message: .mock(id: .unique, cid: .unique, text: "First message", author: .mock(id: .unique)),
+                    message: .mock(id: .unique, cid: .unique, text: "First message", author: .mock(id: .unique), replyCount: 3),
                     replies: [
                         .mock(id: .unique, cid: .unique, text: "First reply", author: .mock(id: .unique)),
                         .mock(id: .unique, cid: .unique, text: "Second reply", author: .mock(id: .unique)),
@@ -75,7 +75,7 @@ final class ChatThreadView_Tests: iOS13TestCase {
                     state: .localDataFetched
                 )
             }
-            
+
             var body: some View {
                 NavigationView {
                     ChatThreadVC.asView(

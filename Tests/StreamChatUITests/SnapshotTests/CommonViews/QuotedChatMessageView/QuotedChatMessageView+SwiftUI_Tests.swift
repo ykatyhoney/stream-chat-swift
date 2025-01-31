@@ -1,14 +1,14 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
 @testable import StreamChatTestTools
 import StreamChatUI
+import StreamSwiftTestHelpers
 import SwiftUI
 import XCTest
 
-@available(iOS 13.0, *)
 final class QuotedChatMessageView_SwiftUI_Tests: XCTestCase {
     func test_injectedSwiftUIView() {
         struct CustomQuotedChatMessageView: QuotedChatMessageView.SwiftUIView {

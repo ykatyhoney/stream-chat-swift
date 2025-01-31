@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
@@ -7,14 +7,16 @@
 import XCTest
 
 final class FilterEncoding_Tests: XCTestCase {
-    func test_filterEncodes_whenNotDoubles() {
+    func test_filterEncodes_whenNotDoubles() throws {
         // Given
         let testCases = FilterCodingTestPair.allCases
         for pair in testCases {
             // When
-            let encoded = try! pair.filter.serializedThrows()
+            let encoded = try XCTUnwrap(pair.filter.serializedThrows().data(using: .utf8))
             // Then
-            XCTAssertEqual(encoded, pair.json)
+            let jsonData = try XCTUnwrap(pair.json.data(using: .utf8))
+            let jsonObject = try XCTUnwrap(try JSONSerialization.jsonObject(with: jsonData) as? [String: Any])
+            AssertJSONEqual(encoded, jsonObject)
         }
     }
 }

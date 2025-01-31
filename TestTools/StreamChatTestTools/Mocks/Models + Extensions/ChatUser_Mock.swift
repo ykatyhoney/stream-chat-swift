@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -17,8 +17,10 @@ public extension ChatUser {
         userRole: UserRole = .user,
         createdAt: Date = .init(),
         updatedAt: Date = .init(),
+        deactivatedAt: Date? = nil,
         lastActiveAt: Date? = nil,
         teams: Set<TeamId> = [],
+        language: TranslationLanguage? = nil,
         extraData: [String: RawJSON] = [:]
     ) -> ChatUser {
         .init(
@@ -31,8 +33,10 @@ public extension ChatUser {
             userRole: userRole,
             createdAt: createdAt,
             updatedAt: updatedAt,
+            deactivatedAt: deactivatedAt,
             lastActiveAt: lastActiveAt,
             teams: teams,
+            language: language,
             extraData: extraData
         )
     }

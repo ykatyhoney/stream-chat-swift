@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -27,36 +27,5 @@ final class ChannelListController_Delegate: QueueAwareDelegate, ChatChannelListC
     ) {
         didChangeChannels_changes = changes
         validateQueue()
-    }
-
-    func controller(_ controller: ChatChannelListController, shouldListUpdatedChannel channel: ChatChannel) -> Bool {
-        validateQueue()
-        return true
-    }
-
-    func controller(_ controller: ChatChannelListController, shouldAddNewChannelToList channel: ChatChannel) -> Bool {
-        validateQueue()
-        return true
-    }
-}
-
-// A concrete `LinkDelegate` implementation allowing capturing the delegate calls
-final class TestLinkDelegate: ChatChannelListControllerDelegate {
-    let shouldListNewChannel: (ChatChannel) -> Bool
-    let shouldListUpdatedChannel: (ChatChannel) -> Bool
-    init(
-        shouldListNewChannel: @escaping (ChatChannel) -> Bool,
-        shouldListUpdatedChannel: @escaping (ChatChannel) -> Bool
-    ) {
-        self.shouldListNewChannel = shouldListNewChannel
-        self.shouldListUpdatedChannel = shouldListUpdatedChannel
-    }
-
-    func controller(_ controller: ChatChannelListController, shouldAddNewChannelToList channel: ChatChannel) -> Bool {
-        shouldListNewChannel(channel)
-    }
-
-    func controller(_ controller: ChatChannelListController, shouldListUpdatedChannel channel: ChatChannel) -> Bool {
-        shouldListUpdatedChannel(channel)
     }
 }

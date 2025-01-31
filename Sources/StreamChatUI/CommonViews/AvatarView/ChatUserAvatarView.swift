@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -17,9 +17,16 @@ open class ChatUserAvatarView: _View, ThemeProvider {
         didSet { updateContentIfNeeded() }
     }
 
+    /// A boolean value to determine if online indicator should be shown or not.
+    public var shouldShowOnlineIndicator: Bool = true
+
     override open func setUpLayout() {
         super.setUpLayout()
         embed(presenceAvatarView)
+
+        if !shouldShowOnlineIndicator {
+            presenceAvatarView.onlineIndicatorView.isHidden = true
+        }
     }
 
     override open func updateContent() {
@@ -31,7 +38,9 @@ open class ChatUserAvatarView: _View, ThemeProvider {
                 placeholder: appearance.images.userAvatarPlaceholder1
             )
         )
-        
-        presenceAvatarView.isOnlineIndicatorVisible = content?.isOnline ?? false
+
+        if shouldShowOnlineIndicator {
+            presenceAvatarView.isOnlineIndicatorVisible = content?.isOnline ?? false
+        }
     }
 }

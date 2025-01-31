@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -11,46 +11,44 @@ open class ChatChannelListVC: _ViewController,
     UICollectionViewDataSource,
     UICollectionViewDelegate,
     ChatChannelListControllerDelegate,
-    DataControllerStateDelegate,
     ThemeProvider,
     SwipeableViewDelegate {
+    /// The data of the channel list.
+    public private(set) var channels: [ChatChannel] = []
+
     /// The `ChatChannelListController` instance that provides channels data.
     public var controller: ChatChannelListController!
 
     private var isPaginatingChannels: Bool = false
-    
+
     /// A boolean value that determines if the chat channel list view states are shown and handled by the SDK.
     open var isChatChannelListStatesEnabled: Bool {
         components.isChatChannelListStatesEnabled
     }
-    
+
     open private(set) lazy var loadingIndicator: UIActivityIndicatorView = {
-        if #available(iOS 13.0, *) {
-            return UIActivityIndicatorView(style: .large).withoutAutoresizingMaskConstraints
-        } else {
-            return UIActivityIndicatorView(style: .whiteLarge).withoutAutoresizingMaskConstraints
-        }
+        UIActivityIndicatorView(style: .large).withoutAutoresizingMaskConstraints
     }()
-    
+
     /// A router object responsible for handling navigation actions of this view controller.
     open lazy var router: ChatChannelListRouter = components
         .channelListRouter
         .init(rootViewController: self)
-    
+
     /// The `UICollectionViewLayout` that used by `ChatChannelListCollectionView`.
     open private(set) lazy var collectionViewLayout: UICollectionViewLayout = components
         .channelListLayout.init()
-    
+
     /// The `UICollectionView` instance that displays channel list.
     open private(set) lazy var collectionView: UICollectionView =
         UICollectionView(frame: .zero, collectionViewLayout: collectionViewLayout)
             .withoutAutoresizingMaskConstraints
             .withAccessibilityIdentifier(identifier: "collectionView")
-    
+
     /// The view that is displayed when there are no channels on the list, i.e. when is on empty state.
     open lazy var emptyView: ChatChannelListEmptyView = components.channelListEmptyView.init()
         .withoutAutoresizingMaskConstraints
-    
+
     /// View which will be shown at the bottom when an error occurs when fetching either local or remote channels.
     /// This view has an action to retry the channel loading.
     open private(set) lazy var channelListErrorView: ChatChannelListErrorView = {
@@ -59,10 +57,10 @@ open class ChatChannelListVC: _ViewController,
         view.isHidden = true
         return view
     }()
-    
+
     /// View that shows when loading the Channel list.
     open private(set) lazy var chatChannelListLoadingView: ChatChannelListLoadingView = components
-        .chatChannelListLoadingView
+        .channelListLoadingView
         .init()
         .withoutAutoresizingMaskConstraints
 
@@ -70,22 +68,26 @@ open class ChatChannelListVC: _ViewController,
     open private(set) lazy var userAvatarView: CurrentChatUserAvatarView = components
         .currentUserAvatarView.init()
         .withoutAutoresizingMaskConstraints
-    
+
     /// Reuse identifier of separator
     open var separatorReuseIdentifier: String { "CellSeparatorIdentifier" }
-    
+
     /// Reuse identifier of `collectionViewCell`
     open var collectionViewCellReuseIdentifier: String { String(describing: ChatChannelListCollectionViewCell.self) }
-
-    /// Component responsible to process an array of `[ListChange<Item>]`'s and apply those changes to a view.
-    private lazy var listChangeUpdater: ListChangeUpdater = CollectionViewListChangeUpdater(
-        collectionView: collectionView
-    )
 
     /// Currently there are some performance problems in the Channel List which
     /// is impacting the message list performance as well, so we skip channel list
     /// updates when the channel list is not visible in the window.
     private(set) var skippedRendering = false
+    private(set) var skipChannelUpdates = true
+    
+    /// Loading cells can trigger persistent store changes which leads to reloadChannels re-entrancy.
+    private var isApplyingChangesets = false
+
+    /// A component responsible to handle when to load new channels.
+    private lazy var viewPaginationHandler: ViewPaginationHandling = {
+        ScrollViewPaginationHandler(scrollView: collectionView)
+    }()
 
     /// Create a new `ChatChannelListViewController`
     /// - Parameters:
@@ -99,7 +101,7 @@ open class ChatChannelListVC: _ViewController,
         storyboardId: String? = nil
     ) -> Self {
         var chatChannelListVC: Self!
-        
+
         // Check if we have a UIStoryboard and/or StoryboardId
         if let storyboardId = storyboardId, let storyboard = storyboard {
             // Safely unwrap the ViewController from the Storyboard
@@ -111,7 +113,7 @@ open class ChatChannelListVC: _ViewController,
         } else {
             chatChannelListVC = Self()
         }
-        
+
         // Set the Controller on the ViewController
         chatChannelListVC.controller = controller
 
@@ -123,37 +125,57 @@ open class ChatChannelListVC: _ViewController,
         super.setUp()
         controller.delegate = self
         controller.synchronize()
-        
+        reloadChannels()
+
         collectionView.register(
             components.channelCell.self,
             forCellWithReuseIdentifier: collectionViewCellReuseIdentifier
         )
-        
+
         collectionView.register(
             components.channelCellSeparator,
             forSupplementaryViewOfKind: ListCollectionViewLayout.separatorKind,
             withReuseIdentifier: separatorReuseIdentifier
         )
 
+        collectionView.alwaysBounceVertical = true
         collectionView.dataSource = self
         collectionView.delegate = self
-        
+
         userAvatarView.controller = controller.client.currentUserController()
         userAvatarView.addTarget(self, action: #selector(didTapOnCurrentUserAvatar), for: .touchUpInside)
-        
+
         channelListErrorView.refreshButtonAction = { [weak self] in
             self?.controller.synchronize()
             self?.channelListErrorView.hide()
         }
+
+        viewPaginationHandler.bottomThreshold = 800
+        viewPaginationHandler.onNewBottomPage = { [weak self] in
+            self?.loadMoreChannels()
+        }
+
+        let searchStrategy = components.channelListSearchStrategy
+        let searchController = searchStrategy?.makeSearchController(with: self)
+        navigationItem.searchController = searchController
+        navigationItem.searchController?.searchBar.placeholder = L10n.ChannelList.search
     }
 
     override open func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-
+        skipChannelUpdates = false
+        
         if skippedRendering {
-            collectionView.reloadData()
+            UIView.performWithoutAnimation {
+                reloadChannels()
+            }
             skippedRendering = false
         }
+    }
+    
+    override open func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        skipChannelUpdates = true
     }
 
     open func collectionView(
@@ -161,25 +183,13 @@ open class ChatChannelListVC: _ViewController,
         willDisplay cell: UICollectionViewCell,
         forItemAt indexPath: IndexPath
     ) {
-        if controller.state != .remoteDataFetched {
-            return
-        }
-
-        guard collectionView.isTrackingOrDecelerating else {
-            return
-        }
-
-        if indexPath.row < collectionView.numberOfItems(inSection: 0) - 10 {
-            return
-        }
-
-        loadMoreChannels()
+        // no-op
     }
 
     override open func setUpLayout() {
         super.setUpLayout()
         view.embed(collectionView)
-        
+
         if isChatChannelListStatesEnabled {
             view.embed(chatChannelListLoadingView)
             view.embed(emptyView)
@@ -192,11 +202,11 @@ open class ChatChannelListVC: _ViewController,
             loadingIndicator.pin(anchors: [.centerX, .centerY], to: view)
         }
     }
-    
+
     override open func setUpAppearance() {
         super.setUpAppearance()
         title = "Stream Chat"
-        
+
         navigationItem.backButtonTitle = ""
         navigationItem.leftBarButtonItem = UIBarButtonItem(customView: userAvatarView)
 
@@ -210,60 +220,70 @@ open class ChatChannelListVC: _ViewController,
             )
         }
     }
-    
-    override open func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        
+
+    override open func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+
         chatChannelListLoadingView.updateContent()
     }
 
-    open func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        controller.channels.count
-    }
-    
-    open func collectionView(
-        _ collectionView: UICollectionView,
-        cellForItemAt indexPath: IndexPath
-    ) -> UICollectionViewCell {
-        let cell = collectionView.dequeueReusableCell(with: ChatChannelListCollectionViewCell.self, for: indexPath)
-        guard let channel = getChannel(at: indexPath) else { return cell }
-        
-        cell.components = components
-        cell.itemView.content = .init(channel: channel, currentUserId: controller.client.currentUserId)
-        
-        cell.swipeableView.delegate = self
-        cell.swipeableView.indexPath = { [weak cell, weak self] in
-            guard let cell = cell else { return nil }
-            return self?.collectionView.indexPath(for: cell)
-        }
-        
-        return cell
-    }
-    
-    open func collectionView(
-        _ collectionView: UICollectionView,
-        viewForSupplementaryElementOfKind kind: String,
-        at indexPath: IndexPath
-    ) -> UICollectionReusableView {
-        collectionView.dequeueReusableSupplementaryView(
-            ofKind: ListCollectionViewLayout.separatorKind,
-            withReuseIdentifier: separatorReuseIdentifier,
-            for: indexPath
+    /// Replaces the channel list query and loads the new data.
+    ///
+    /// In case your `ChatChannelListController` uses a filter block, you should
+    /// use the `replaceChannelListController()` function instead of this one.
+    ///
+    /// - Parameter query: The new channel list query.
+    public func replaceQuery(_ query: ChannelListQuery) {
+        let newController = controller.client.channelListController(
+            query: query
         )
+        replaceChannelListController(newController)
     }
-        
-    open func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        defer {
-            collectionView.deselectItem(at: indexPath, animated: true)
+
+    /// Replaces the channel list controller and loads the new data.
+    /// - Parameter controller: The new channel list controller.
+    public func replaceChannelListController(_ controller: ChatChannelListController) {
+        self.controller = controller
+        self.controller.delegate = self
+        self.controller.synchronize()
+        reloadChannels()
+    }
+    
+    /// Updates the list view with the most updated channels.
+    public func reloadChannels() {
+        if isApplyingChangesets {
+            DispatchQueue.main.async {
+                self.reloadChannels()
+            }
+            return
         }
-        guard let channel = getChannel(at: indexPath) else { return }
-        router.showChannel(for: channel.cid)
-    }
         
+        isApplyingChangesets = true
+        let previousChannels = channels
+        let newChannels = Array(controller.channels)
+        let stagedChangeset = StagedChangeset(source: previousChannels, target: newChannels)
+        collectionView.reload(using: stagedChangeset, reconfigure: { _ in true }) { [weak self] newChannels in
+            self?.channels = newChannels
+        }
+        isApplyingChangesets = false
+    }
+
+    /// Loads the next page of channels.
+    open func loadMoreChannels() {
+        guard !isPaginatingChannels else {
+            return
+        }
+        isPaginatingChannels = true
+
+        controller.loadNextChannels { [weak self] _ in
+            self?.isPaginatingChannels = false
+        }
+    }
+
     @objc open func didTapOnCurrentUserAvatar(_ sender: Any) {
         router.showCurrentUserProfile()
     }
-    
+
     override open func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         collectionViewLayout.invalidateLayout()
@@ -275,21 +295,59 @@ open class ChatChannelListVC: _ViewController,
             parent.isUIHostingController
         else { return }
 
-        if #available(iOS 13.0, *) {
-            setupParentNavigation(parent: parent)
-        }
+        setupParentNavigation(parent: parent)
     }
 
-    open func loadMoreChannels() {
-        guard !isPaginatingChannels else {
-            return
-        }
-        isPaginatingChannels = true
+    // MARK: - Collection View
 
-        controller.loadNextChannels { [weak self] _ in
-            self?.isPaginatingChannels = false
-        }
+    open func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        channels.count
     }
+
+    open func collectionView(
+        _ collectionView: UICollectionView,
+        cellForItemAt indexPath: IndexPath
+    ) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(with: ChatChannelListCollectionViewCell.self, for: indexPath)
+        guard let channel = getChannel(at: indexPath) else { return cell }
+
+        cell.components = components
+        cell.itemView.content = .init(
+            channel: channel,
+            currentUserId: controller.client.currentUserId,
+            searchResult: nil
+        )
+
+        cell.swipeableView.delegate = self
+        cell.swipeableView.indexPath = { [weak cell, weak self] in
+            guard let cell = cell else { return nil }
+            return self?.collectionView.indexPath(for: cell)
+        }
+
+        return cell
+    }
+
+    open func collectionView(
+        _ collectionView: UICollectionView,
+        viewForSupplementaryElementOfKind kind: String,
+        at indexPath: IndexPath
+    ) -> UICollectionReusableView {
+        collectionView.dequeueReusableSupplementaryView(
+            ofKind: ListCollectionViewLayout.separatorKind,
+            withReuseIdentifier: separatorReuseIdentifier,
+            for: indexPath
+        )
+    }
+
+    open func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        defer {
+            collectionView.deselectItem(at: indexPath, animated: true)
+        }
+        guard let channel = getChannel(at: indexPath) else { return }
+        router.showChannel(for: channel.cid)
+    }
+
+    // MARK: - Swipeable View
 
     open func swipeableViewWillShowActionViews(for indexPath: IndexPath) {
         // Close other open cells
@@ -322,7 +380,11 @@ open class ChatChannelListVC: _ViewController,
 
         moreView.action = { [weak self] in self?.moreButtonPressedForCell(at: indexPath) }
 
-        return [moreView, deleteView]
+        if let channel = channels[safe: indexPath.item], channel.canDeleteChannel {
+            return [moreView, deleteView]
+        }
+
+        return [moreView]
     }
 
     /// This function is called when delete button is pressed from action items of a cell.
@@ -338,61 +400,59 @@ open class ChatChannelListVC: _ViewController,
         guard let channel = getChannel(at: indexPath) else { return }
         router.didTapMoreButton(for: channel.cid)
     }
-    
+
     // MARK: - ChatChannelListControllerDelegate
-    
+
     open func controllerWillChangeChannels(_ controller: ChatChannelListController) {
         collectionView.layoutIfNeeded()
     }
-    
+
     open func controller(
         _ controller: ChatChannelListController,
         didChangeChannels changes: [ListChange<ChatChannel>]
     ) {
-        let isViewNotVisible = viewIfLoaded?.window == nil
-        if isViewNotVisible {
+        handleStateChanges(controller.state)
+
+        if skipChannelUpdates {
             skippedRendering = true
             return
         }
 
-        listChangeUpdater.performUpdate(with: changes)
-    }
-
-    @available(*, deprecated, message: "Please use `filter` when initializing a `ChatChannelListController`")
-    open func controller(_ controller: ChatChannelListController, shouldAddNewChannelToList channel: ChatChannel) -> Bool {
-        channel.membership != nil
-    }
-
-    @available(*, deprecated, message: "Please use `filter` when initializing a `ChatChannelListController`")
-    open func controller(_ controller: ChatChannelListController, shouldListUpdatedChannel channel: ChatChannel) -> Bool {
-        channel.membership != nil
+        reloadChannels()
     }
 
     // MARK: - DataControllerStateDelegate
-    
+
     open func controller(_ controller: DataController, didChangeState state: DataController.State) {
+        handleStateChanges(state)
+    }
+
+    /// Called whenever the channels data changes or the controller.state changes.
+    /// It controls the visibility of the channel list state views.
+    open func handleStateChanges(_ newState: DataController.State) {
         if isChatChannelListStatesEnabled {
             var shouldHideEmptyView = true
             var isLoading = true
-            
-            switch state {
+
+            switch newState {
             case .initialized, .localDataFetched:
-                isLoading = self.controller.channels.isEmpty
+                isLoading = controller.channels.isEmpty
             case .remoteDataFetched:
                 isLoading = false
-                shouldHideEmptyView = !self.controller.channels.isEmpty
+                shouldHideEmptyView = !controller.channels.isEmpty
+                channelListErrorView.hide()
             case .localDataFetchFailed, .remoteDataFetchFailed:
                 shouldHideEmptyView = emptyView.isHidden
                 isLoading = false
                 channelListErrorView.show()
             }
-            
+
             emptyView.isHidden = shouldHideEmptyView
             chatChannelListLoadingView.isHidden = !isLoading
         } else {
-            switch state {
+            switch newState {
             case .initialized, .localDataFetched:
-                if self.controller.channels.isEmpty {
+                if controller.channels.isEmpty {
                     loadingIndicator.startAnimating()
                 } else {
                     loadingIndicator.stopAnimating()
@@ -405,7 +465,17 @@ open class ChatChannelListVC: _ViewController,
 
     private func getChannel(at indexPath: IndexPath) -> ChatChannel? {
         let index = indexPath.row
-        controller.channels.assertIndexIsPresent(index)
-        return controller.channels[safe: index]
+        channels.assertIndexIsPresent(index)
+        return channels[safe: index]
+    }
+}
+
+extension ChatChannel: Differentiable {
+    public func isContentEqual(to source: ChatChannel) -> Bool {
+        self == source
+    }
+    
+    public var differenceIdentifier: Int {
+        hashValue
     }
 }

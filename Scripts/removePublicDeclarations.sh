@@ -39,13 +39,6 @@ do
 		fi
 	fi
 
-	# Starscream
-	if [[ $directory == *"Starscream"* ]]; then
-		replaceDeclaration 'WebSocketClient' 'StarscreamWebSocketClient' $f
-		replaceDeclaration 'ConnectionEvent' 'StarscreamConnectionEvent' $f
-		replaceDeclaration ': class {' ': AnyObject {' $f
-	fi
-
 	# DiffernceKit
 	if [[ $directory == *"DifferenceKit"* ]]; then
 		# For DifferenceKit we need to change some declarations to public
@@ -62,10 +55,8 @@ do
 		'public func isContentEqual(to source: Wrapped?) -> Bool {' \
 		$f
 
-		# This replacement is not actually working, and I don't know why,
-		# for now, I did this change manually.
-		replaceDeclaration 'func isContentEqual(to source: [Element]) -> Bool' \
-		'public func isContentEqual(to source: [Element]) -> Bool' \
+		replaceDeclaration 'func isContentEqual(to source: \[Element\]) -> Bool' \
+		'public func isContentEqual(to source: \[Element\]) -> Bool' \
 		$f
 
 		replaceDeclaration 'extension ContentIdentifiable where Self: Hashable {' \

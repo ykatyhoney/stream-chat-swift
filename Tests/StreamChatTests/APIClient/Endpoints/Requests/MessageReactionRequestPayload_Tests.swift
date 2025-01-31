@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
@@ -16,7 +16,7 @@ final class MessageReactionRequestPayload_Tests: XCTestCase {
 
         // Encode the payload.
         let json = try JSONEncoder.default.encode(payload)
-        
+
         // Assert encoding is correct.
         AssertJSONEqual(json, [
             "enforce_unique": payload.enforceUnique,
@@ -24,7 +24,7 @@ final class MessageReactionRequestPayload_Tests: XCTestCase {
                 "type": payload.reaction.type.rawValue,
                 "score": payload.reaction.score,
                 "mood": "good one"
-            ]
+            ] as [String: Any]
         ])
     }
 }

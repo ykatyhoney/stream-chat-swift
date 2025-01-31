@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
@@ -18,10 +18,10 @@ final class ChatMessage_Tests: XCTestCase {
             author: ChatUser.mock(id: .anonymous),
             threadParticipants: []
         )
-        
+
         XCTAssertNil(message.lastActiveThreadParticipant)
     }
-    
+
     func test_lastActiveThreadParticipant_whenManyParticipants_returnsLastActive() {
         let message = ChatMessage.mock(
             id: .anonymous,
@@ -40,10 +40,10 @@ final class ChatMessage_Tests: XCTestCase {
                 )
             ]
         )
-        
+
         XCTAssertEqual(message.lastActiveThreadParticipant?.name, "Second")
     }
-    
+
     func test_lastActiveThreadParticipant_whenLastActiveIsNotPresent_sortsByUpdatedAt() {
         let message = ChatMessage.mock(
             id: .anonymous,
@@ -71,7 +71,7 @@ final class ChatMessage_Tests: XCTestCase {
                 )
             ]
         )
-        
+
         XCTAssertEqual(message.lastActiveThreadParticipant?.name, "Second")
     }
 
@@ -131,6 +131,33 @@ final class ChatMessage_Tests: XCTestCase {
 
             XCTAssertTrue(nonDeletedNonEphemeralMessageWithFailedLocalState.isInteractionEnabled)
         }
+    }
+
+    func test_isInteractionEnabled_whenMessageHasError_returnsFalse() {
+        let message: ChatMessage = .mock(
+            id: .unique,
+            cid: .unique,
+            text: .unique,
+            type: .error,
+            author: .mock(id: .unique),
+            localState: nil
+        )
+
+        XCTAssertFalse(message.isInteractionEnabled)
+    }
+
+    func test_isInteractionEnabled_whenMessageHasError_whenBounced_returnsTrue() {
+        let message: ChatMessage = .mock(
+            id: .unique,
+            cid: .unique,
+            text: .unique,
+            type: .error,
+            author: .mock(id: .unique),
+            isBounced: true,
+            localState: nil
+        )
+
+        XCTAssertTrue(message.isInteractionEnabled)
     }
 
     // MARK: - isLastActionFailed
@@ -202,6 +229,31 @@ final class ChatMessage_Tests: XCTestCase {
             )
 
             XCTAssertFalse(deletedMessage.isLastActionFailed)
+        }
+    }
+
+    func test_isLastActionFailed_whenMessageIsBounced_returnsTrue() {
+        for localState: LocalMessageState? in [
+            nil,
+            .pendingSync,
+            .syncing,
+            .syncingFailed,
+            .pendingSend,
+            .sending,
+            .sendingFailed,
+            .deleting,
+            .deletingFailed
+        ] {
+            let message: ChatMessage = .mock(
+                id: .unique,
+                cid: .unique,
+                text: .unique,
+                author: .mock(id: .unique),
+                isBounced: true,
+                localState: localState
+            )
+
+            XCTAssertTrue(message.isLastActionFailed)
         }
     }
 
@@ -375,5 +427,47 @@ final class ChatMessage_Tests: XCTestCase {
         )
 
         XCTAssertTrue(deletedMessage.isDeleted)
+    }
+
+    // MARK: - shouldRenderAsSystemMessage
+
+    func test_shouldRenderAsSystemMessage_whenMessageIsSystem_returnsTrue() {
+        let message: ChatMessage = .mock(
+            id: .unique,
+            cid: .unique,
+            text: .unique,
+            type: .system,
+            author: .mock(id: .unique),
+            deletedAt: .unique
+        )
+
+        XCTAssertTrue(message.shouldRenderAsSystemMessage)
+    }
+
+    func test_shouldRenderAsSystemMessage_whenMessageIsError_returnsTrue() {
+        let message: ChatMessage = .mock(
+            id: .unique,
+            cid: .unique,
+            text: .unique,
+            type: .error,
+            author: .mock(id: .unique),
+            deletedAt: .unique
+        )
+
+        XCTAssertTrue(message.shouldRenderAsSystemMessage)
+    }
+
+    func test_shouldRenderAsSystemMessage_whenMessageIsError_whenIsBounced_returnsFalse() {
+        let message: ChatMessage = .mock(
+            id: .unique,
+            cid: .unique,
+            text: .unique,
+            type: .error,
+            author: .mock(id: .unique),
+            deletedAt: .unique,
+            isBounced: true
+        )
+
+        XCTAssertFalse(message.shouldRenderAsSystemMessage)
     }
 }

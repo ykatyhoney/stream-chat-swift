@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
@@ -20,8 +20,8 @@ final class ChannelTruncatedEventMiddleware_Tests: XCTestCase {
     }
 
     override func tearDown() {
-        AssertAsync.canBeReleased(&database)
         database = nil
+        AssertAsync.canBeReleased(&database)
         super.tearDown()
     }
 

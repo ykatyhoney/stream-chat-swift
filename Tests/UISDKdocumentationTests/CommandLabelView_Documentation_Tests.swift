@@ -1,9 +1,9 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
-import StreamChatTestTools
+@testable import StreamChatTestTools
 @testable import StreamChatUI
 import SwiftUI
 import XCTest
@@ -13,7 +13,7 @@ class CommandLabelView_Documentation_Tests: XCTestCase {
         // Create a view to annotate and create documentation for.
         let view = CommandLabelView().withoutAutoresizingMaskConstraints
         view.content = Command(name: "Giphy", description: "", set: "", args: "")
-            
+
         generateDocs(
             for: view,
             annotations: { view in

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import CoreData
@@ -9,18 +9,8 @@ import UserNotifications
 public class MessageNotificationContent {
     public let message: ChatMessage
     public let channel: ChatChannel?
-    
-    init(message: ChatMessage, channel: ChatChannel?) {
-        self.message = message
-        self.channel = channel
-    }
-}
 
-public class ReactionNotificationContent {
-    public let message: ChatMessage
-    public let channel: ChatChannel?
-    
-    public init(message: ChatMessage, channel: ChatChannel?) {
+    init(message: ChatMessage, channel: ChatChannel?) {
         self.message = message
         self.channel = channel
     }
@@ -28,7 +18,7 @@ public class ReactionNotificationContent {
 
 public class UnknownNotificationContent {
     public let content: UNNotificationContent
-    
+
     public init(content: UNNotificationContent) {
         self.content = content
     }
@@ -36,7 +26,6 @@ public class UnknownNotificationContent {
 
 public enum ChatPushNotificationContent {
     case message(MessageNotificationContent)
-    case reaction(ReactionNotificationContent)
     case unknown(UnknownNotificationContent)
 }
 
@@ -84,6 +73,7 @@ public class ChatRemoteNotificationHandler {
     let database: DatabaseContainer
     let syncRepository: SyncRepository
     let messageRepository: MessageRepository
+    let extensionLifecycle: NotificationExtensionLifecycle
 
     public init(client: ChatClient, content: UNNotificationContent) {
         self.client = client
@@ -91,13 +81,14 @@ public class ChatRemoteNotificationHandler {
         database = client.databaseContainer
         syncRepository = client.syncRepository
         messageRepository = client.messageRepository
+        extensionLifecycle = client.extensionLifecycle
     }
 
     public func handleNotification(completion: @escaping (ChatPushNotificationContent) -> Void) -> Bool {
         guard chatCategoryIdentifiers.contains(content.categoryIdentifier) else {
             return false
         }
-        
+
         getContent(completion: completion)
         return true
     }
@@ -110,7 +101,7 @@ public class ChatRemoteNotificationHandler {
         guard let type = dict["type"] else {
             return completion(.unknown(UnknownNotificationContent(content: content)))
         }
-        
+
         if EventType(rawValue: type) == .messageNew {
             guard let cid = dict["cid"], let id = dict["id"], let channelId = try? ChannelId(cid: cid) else {
                 completion(.unknown(UnknownNotificationContent(content: content)))
@@ -130,7 +121,11 @@ public class ChatRemoteNotificationHandler {
 
     private func getMessageAndSync(cid: ChannelId, messageId: String, completion: @escaping (ChatMessage?, ChatChannel?) -> Void) {
         let database = self.database
-        messageRepository.getMessage(cid: cid, messageId: messageId) { [weak self] result in
+        messageRepository.getMessage(
+            cid: cid,
+            messageId: messageId,
+            store: !extensionLifecycle.isAppReceivingWebSocketEvents
+        ) { [weak self] result in
             guard case let .success(message) = result else {
                 completion(nil, nil)
                 return

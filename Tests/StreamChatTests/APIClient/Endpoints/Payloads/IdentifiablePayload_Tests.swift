@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
@@ -154,7 +154,7 @@ final class IdentifiablePayload_Tests: XCTestCase {
     }
 
     func test_ChannelReadPayload_isIdentifiablePayload() {
-        let payload = ChannelReadPayload(user: .dummy(userId: "u3"), lastReadAt: Date(), unreadMessagesCount: 2)
+        let payload = ChannelReadPayload(user: .dummy(userId: "u3"), lastReadAt: Date(), lastReadMessageId: .unique, unreadMessagesCount: 2)
         XCTAssertNil(payload.databaseId)
         XCTAssertTrue(ChannelReadPayload.modelClass == ChannelReadDTO.self)
     }
@@ -305,7 +305,9 @@ final class IdentifiablePayload_Tests: XCTestCase {
                 createdBy: owner,
                 config: .mock(),
                 ownCapabilities: [],
+                isDisabled: false,
                 isFrozen: true,
+                isBlocked: false,
                 isHidden: false,
                 members: users.map { MemberPayload.dummy(user: $0) },
                 memberCount: users.count,
@@ -391,11 +393,13 @@ final class IdentifiablePayload_Tests: XCTestCase {
                     isMemberBanned: false
                 ),
                 messages: messages,
+                pendingMessages: nil,
                 pinnedMessages: [],
                 channelReads: (0..<channelReadCount).map { i in
                     ChannelReadPayload(
                         user: users[i],
                         lastReadAt: .unique(after: channelDetail.createdAt),
+                        lastReadMessageId: .unique,
                         unreadMessagesCount: (0..<10).randomElement()!
                     )
                 },

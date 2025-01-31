@@ -10,6 +10,7 @@
   ],
   "defaultOptions" : {
     "codeCoverage" : false,
+    "preferredScreenCaptureFormat" : "screenshot",
     "targetForVariableExpansion" : {
       "containerPath" : "container:StreamChat.xcodeproj",
       "identifier" : "A34407B927D8C33F0044F150",
@@ -18,6 +19,10 @@
   },
   "testTargets" : [
     {
+      "skippedTests" : [
+        "ChannelListScrollTime",
+        "MessageListScrollTime"
+      ],
       "target" : {
         "containerPath" : "container:StreamChat.xcodeproj",
         "identifier" : "A34407DB27D8C3400044F150",

@@ -1,12 +1,11 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
 @testable import StreamChatTestTools
 import XCTest
 
-@available(iOS 13, *)
 final class WatcherListController_SwiftUI_Tests: iOS13TestCase {
     var query: ChannelWatcherListQuery!
     var watcherListController: ChatChannelWatcherListController_Mock!

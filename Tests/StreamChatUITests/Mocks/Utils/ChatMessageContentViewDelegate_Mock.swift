@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -9,6 +9,9 @@ import Foundation
 class ChatMessageContentViewDelegate_Mock: ChatMessageContentViewDelegate {
     var messageContentViewDidTapOnMentionedUserCallCount = 0
     var tappedMentionedUser: ChatUser?
+
+    var messageContentViewDidTapOnQuotedMessageCallCount = 0
+    var tappedQuotedMessage: ChatMessage?
 
     func messageContentViewDidTapOnMentionedUser(_ mentionedUser: ChatUser) {
         messageContentViewDidTapOnMentionedUserCallCount += 1
@@ -23,8 +26,9 @@ class ChatMessageContentViewDelegate_Mock: ChatMessageContentViewDelegate {
         // TODO:
     }
 
-    func messageContentViewDidTapOnQuotedMessage(_ indexPath: IndexPath?) {
-        // TODO:
+    func messageContentViewDidTapOnQuotedMessage(_ quotedMessage: ChatMessage) {
+        messageContentViewDidTapOnQuotedMessageCallCount += 1
+        tappedQuotedMessage = quotedMessage
     }
 
     func messageContentViewDidTapOnAvatarView(_ indexPath: IndexPath?) {

@@ -1,14 +1,15 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
+import CoreData
 import Foundation
 
 enum MessageRepositoryError: LocalizedError {
     case messageDoesNotExist
     case messageNotPendingSend
     case messageDoesNotHaveValidChannel
-    case failedToSendMessage
+    case failedToSendMessage(Error)
 }
 
 class MessageRepository {
@@ -46,6 +47,8 @@ class MessageRepository {
             }
 
             let requestBody = dto.asRequestBody() as MessageRequestBody
+            let skipPush: Bool = dto.skipPush
+            let skipEnrichUrl: Bool = dto.skipEnrichUrl
 
             // Change the message state to `.sending` and the proceed with the actual sending
             self?.database.write({
@@ -55,20 +58,26 @@ class MessageRepository {
                 if let error = error {
                     log.error("Error changing localMessageState message with id \(messageId) to `sending`: \(error)")
                     self?.markMessageAsFailedToSend(id: messageId) {
-                        completion(.failure(.failedToSendMessage))
+                        completion(.failure(.failedToSendMessage(error)))
                     }
                     return
                 }
 
-                let endpoint: Endpoint<MessagePayload.Boxed> = .sendMessage(cid: cid, messagePayload: requestBody)
+                let endpoint: Endpoint<MessagePayload.Boxed> = .sendMessage(
+                    cid: cid,
+                    messagePayload: requestBody,
+                    skipPush: skipPush,
+                    skipEnrichUrl: skipEnrichUrl
+                )
                 self?.apiClient.request(endpoint: endpoint) {
                     switch $0 {
                     case let .success(payload):
-                        self?.saveSuccessfullySentMessage(cid: cid, message: payload.message) { message in
-                            if let message = message {
+                        self?.saveSuccessfullySentMessage(cid: cid, message: payload.message) { result in
+                            switch result {
+                            case let .success(message):
                                 completion(.success(message))
-                            } else {
-                                completion(.failure(.failedToSendMessage))
+                            case let .failure(error):
+                                completion(.failure(.failedToSendMessage(error)))
                             }
                         }
 
@@ -79,53 +88,105 @@ class MessageRepository {
             })
         }
     }
+    
+    /// Marks the message's local status to failed and adds it to the offline retry which sends the message when connection comes back.
+    func scheduleOfflineRetry(for messageId: MessageId, completion: @escaping (Result<ChatMessage, MessageRepositoryError>) -> Void) {
+        var dataEndpoint: DataEndpoint!
+        var messageModel: ChatMessage!
+        database.write { session in
+            guard let dto = session.message(id: messageId) else {
+                throw MessageRepositoryError.messageDoesNotExist
+            }
+            guard let channelDTO = dto.channel, let cid = try? ChannelId(cid: channelDTO.cid) else {
+                throw MessageRepositoryError.messageDoesNotHaveValidChannel
+            }
+            
+            // Send the message to offline handling
+            let requestBody = dto.asRequestBody() as MessageRequestBody
+            let endpoint: Endpoint<MessagePayload.Boxed> = .sendMessage(
+                cid: cid,
+                messagePayload: requestBody,
+                skipPush: dto.skipPush,
+                skipEnrichUrl: dto.skipEnrichUrl
+            )
+            dataEndpoint = endpoint.withDataResponse
+            
+            // Mark it as failed
+            dto.localMessageState = .sendingFailed
+            messageModel = try dto.asModel()
+        } completion: { [weak self] writeError in
+            if let writeError {
+                switch writeError {
+                case let repositoryError as MessageRepositoryError:
+                    completion(.failure(repositoryError))
+                default:
+                    completion(.failure(.failedToSendMessage(writeError)))
+                }
+                return
+            }
+            // Offline repository will send it when connection comes back on, until then we show the message as failed
+            self?.apiClient.queueOfflineRequest?(dataEndpoint.withDataResponse)
+            completion(.success(messageModel))
+        }
+    }
 
     func saveSuccessfullySentMessage(
         cid: ChannelId,
         message: MessagePayload,
-        completion: @escaping (ChatMessage?) -> Void
+        completion: @escaping (Result<ChatMessage, Error>) -> Void
     ) {
-        var messageModel: ChatMessage?
+        var messageModel: ChatMessage!
         database.write({
             let messageDTO = try $0.saveMessage(payload: message, for: cid, syncOwnReactions: false, cache: nil)
             if messageDTO.localMessageState == .sending || messageDTO.localMessageState == .sendingFailed {
-                messageDTO.locallyCreatedAt = nil
-                messageDTO.localMessageState = nil
-                messageDTO.isBounced = false
+                messageDTO.markMessageAsSent()
             }
-            
-            messageModel = try? messageDTO.asModel()
+            messageModel = try messageDTO.asModel()
         }, completion: {
             if let error = $0 {
                 log.error("Error saving sent message with id \(message.id): \(error)", subsystems: .offlineSupport)
+                completion(.failure(error))
+            } else {
+                completion(.success(messageModel))
             }
-            completion(messageModel)
         })
     }
-    
+
     private func handleSendingMessageError(
         _ error: Error,
         messageId: MessageId,
         completion: @escaping (Result<ChatMessage, MessageRepositoryError>) -> Void
     ) {
         log.error("Sending the message with id \(messageId) failed with error: \(error)")
-        
-        let isBounced = (error as? ClientError)?.isBouncedMessageError ?? false
-        
-        markMessageAsFailedToSend(id: messageId, isBounced: isBounced) {
-            completion(.failure(.failedToSendMessage))
+
+        if let clientError = error as? ClientError, let errorPayload = clientError.errorPayload {
+            // If the message already exists on the server we do not want to mark it as failed,
+            // since this will cause an unrecoverable state, where the user will keep resending
+            // the message and it will always fail. Right now, the only way to check this error is
+            // by checking a combination of the error code and description, since there is no special
+            // error code for duplicated messages.
+            let isDuplicatedMessageError = errorPayload.code == 4 && errorPayload.message.contains("already exists")
+            if isDuplicatedMessageError {
+                database.write({
+                    let messageDTO = $0.message(id: messageId)
+                    messageDTO?.markMessageAsSent()
+                }, completion: { _ in
+                    completion(.failure(.failedToSendMessage(error)))
+                })
+                return
+            }
+        }
+
+        markMessageAsFailedToSend(id: messageId) {
+            completion(.failure(.failedToSendMessage(error)))
         }
     }
-    
-    private func markMessageAsFailedToSend(id: MessageId, isBounced: Bool? = nil, completion: @escaping () -> Void) {
+
+    private func markMessageAsFailedToSend(id: MessageId, completion: @escaping () -> Void) {
         database.write({
             let dto = $0.message(id: id)
             if dto?.localMessageState == .sending {
-                dto?.localMessageState = .sendingFailed
-            }
-            
-            if let isBounced = isBounced {
-                dto?.isBounced = isBounced
+                dto?.markMessageAsFailed()
             }
         }, completion: {
             if let error = $0 {
@@ -139,7 +200,7 @@ class MessageRepository {
     }
 
     func saveSuccessfullyEditedMessage(for id: MessageId, completion: @escaping () -> Void) {
-        updateMessage(withID: id, localState: nil, completion: completion)
+        updateMessage(withID: id, localState: nil, completion: { _ in completion() })
     }
 
     func saveSuccessfullyDeletedMessage(message: MessagePayload, completion: ((Error?) -> Void)? = nil) {
@@ -155,6 +216,9 @@ class MessageRepository {
 
             if messageDTO.isHardDeleted {
                 session.delete(message: deletedMessage)
+                messageDTO.replies.forEach {
+                    session.delete(message: $0)
+                }
             }
         }, completion: {
             completion?($0)
@@ -165,8 +229,9 @@ class MessageRepository {
     /// - Parameters:
     ///   - cid: The channel identifier the message relates to.
     ///   - messageId: The message identifier.
+    ///   - store: A boolean indicating if the message should be stored to database or should only be retrieved
     ///   - completion: The completion. Will be called with an error if something goes wrong, otherwise - will be called with `nil`.
-    func getMessage(cid: ChannelId, messageId: MessageId, completion: ((Result<ChatMessage, Error>) -> Void)? = nil) {
+    func getMessage(cid: ChannelId, messageId: MessageId, store: Bool, completion: ((Result<ChatMessage, Error>) -> Void)? = nil) {
         let endpoint: Endpoint<MessagePayload.Boxed> = .getMessage(messageId: messageId)
         apiClient.request(endpoint: endpoint) {
             switch $0 {
@@ -174,6 +239,11 @@ class MessageRepository {
                 var message: ChatMessage?
                 self.database.write({ session in
                     message = try session.saveMessage(payload: boxed.message, for: cid, syncOwnReactions: true, cache: nil).asModel()
+                    if !store {
+                        // Force load attachments before discarding changes
+                        _ = message?.attachmentCounts
+                        self.database.writableContext.discardCurrentChanges()
+                    }
                 }, completion: { error in
                     if let error = error {
                         completion?(.failure(error))
@@ -190,23 +260,44 @@ class MessageRepository {
         }
     }
 
-    func updateMessage(withID id: MessageId, localState: LocalMessageState?, isBounced: Bool? = nil, completion: @escaping () -> Void) {
+    /// Fetches a message id before the specified message when sorting by the creation date in the local database.
+    func getMessage(
+        before messageId: MessageId,
+        in cid: ChannelId,
+        completion: @escaping (Result<MessageId?, Error>) -> Void
+    ) {
+        let context = database.backgroundReadOnlyContext
+        context.perform {
+            let clientConfig = context.chatClientConfig
+            let deletedMessagesVisibility = clientConfig?.deletedMessagesVisibility ?? .alwaysVisible
+            let shouldShowShadowedMessages = clientConfig?.shouldShowShadowedMessages ?? false
+            do {
+                let resultId = try MessageDTO.loadMessage(
+                    before: messageId,
+                    cid: cid.rawValue,
+                    deletedMessagesVisibility: deletedMessagesVisibility,
+                    shouldShowShadowedMessages: shouldShowShadowedMessages,
+                    context: context
+                )?.id
+                completion(.success(resultId))
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+    
+    func updateMessage(withID id: MessageId, localState: LocalMessageState?, completion: @escaping (Result<ChatMessage, Error>) -> Void) {
+        var message: ChatMessage?
         database.write({
             let dto = $0.message(id: id)
-            
             dto?.localMessageState = localState
-            
-            if let isBounced = isBounced {
-                dto?.isBounced = isBounced
-            }
+            message = try dto?.asModel()
         }, completion: { error in
             if let error = error {
-                log
-                    .error(
-                        "Error changing localMessageState for message with id \(id) to `\(String(describing: localState))`: \(error)"
-                    )
+                completion(.failure(error))
+            } else {
+                completion(.success(message!))
             }
-            completion()
         })
     }
 
@@ -233,12 +324,40 @@ class MessageRepository {
         completion: (() -> Void)? = nil
     ) {
         database.write {
-            _ = try $0.addReaction(to: messageId, type: type, score: score, extraData: [:], localState: .deletingFailed)
+            _ = try $0.addReaction(to: messageId, type: type, score: score, enforceUnique: false, extraData: [:], localState: .deletingFailed)
         } completion: { error in
             if let error = error {
                 log.error("Error adding reaction for message with id \(messageId): \(error)")
             }
             completion?()
+        }
+    }
+}
+
+extension MessageRepository {
+    /// Fetches messages from the database with a date range.
+    func messages(from fromDate: Date, to toDate: Date, in cid: ChannelId) async throws -> [ChatMessage] {
+        try await database.read { session in
+            try session.loadMessages(
+                from: fromDate,
+                to: toDate,
+                in: cid,
+                sortAscending: true
+            )
+            .map { try $0.asModel() }
+        }
+    }
+    
+    /// Fetches replies from the database with a date range.
+    func replies(from fromDate: Date, to toDate: Date, in message: MessageId) async throws -> [ChatMessage] {
+        try await database.read { session in
+            try session.loadReplies(
+                from: fromDate,
+                to: toDate,
+                in: message,
+                sortAscending: true
+            )
+            .map { try $0.asModel() }
         }
     }
 }

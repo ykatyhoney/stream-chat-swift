@@ -1,14 +1,14 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 @testable import StreamChat
 @testable import StreamChatTestTools
 @testable import StreamChatUI
+import StreamSwiftTestHelpers
 import SwiftUI
 import XCTest
 
-@available(iOS 13.0, *)
 final class ChatChannelListView_Tests: iOS13TestCase {
     var chatChannelList: SwiftUIViewControllerRepresentable<ChatChannelListVC>!
     var mockedChannelListController: ChatChannelListController_Mock!
@@ -17,9 +17,10 @@ final class ChatChannelListView_Tests: iOS13TestCase {
 
     override func setUp() {
         super.setUp()
-        
+
         // TODO: We have to replace default as the components are not injected in SwiftUI views.
         Components.default = .mock
+        Appearance.default.formatters.channelListMessageTimestamp = DefaultMessageTimestampFormatter()
         mockedChannelListController = ChatChannelListController_Mock.mock()
         chatChannelList = ChatChannelListVC.asView(mockedChannelListController)
 

@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import StreamChat
@@ -28,7 +28,7 @@ open class ChatMessageReactionItemView: _Button, AppearanceProvider {
     }
 
     override open var intrinsicContentSize: CGSize {
-        image(for: .normal)?.size ?? super.intrinsicContentSize
+        image(for: .normal)?.size ?? .init(width: 25, height: 25)
     }
 
     open var reactionImage: UIImage? {
@@ -75,6 +75,7 @@ open class ChatMessageReactionItemView: _Button, AppearanceProvider {
     override open func tintColorDidChange() {
         super.tintColorDidChange()
 
+        guard UIApplication.shared.applicationState == .active else { return }
         updateContentIfNeeded()
     }
 

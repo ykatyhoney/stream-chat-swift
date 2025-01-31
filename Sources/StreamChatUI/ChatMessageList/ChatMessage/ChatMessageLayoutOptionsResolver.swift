@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import Foundation
@@ -9,11 +9,13 @@ import StreamChat
 open class ChatMessageLayoutOptionsResolver {
     /// The maximum time interval between 2 consecutive messages sent by the same user to treat them as a single message group.
     public let maxTimeIntervalBetweenMessagesInGroup: TimeInterval
-    
+
     // TODO: Propagate via `init` in v5, make it non-optional.
     /// The config of the `ChatClient` used.
     public internal(set) var config: ChatClientConfig?
-    
+    /// The components config in use.
+    public internal(set) var components: Components?
+
     /// Creates new `ChatMessageLayoutOptionsResolver`.
     ///
     /// - Parameter maxTimeIntervalBetweenMessagesInGroup: The maximum time interval between 2 consecutive messages sent by the same user to treat them as a single message group (`60 sec` by default).
@@ -47,16 +49,16 @@ open class ChatMessageLayoutOptionsResolver {
             messageIndexPath: indexPath,
             messages: messages
         )
-        
+
         var options: ChatMessageLayoutOptions = []
 
-        // The text should be centered without a bubble for system or error messages
-        guard message.type != .system && message.type != .error else {
+        if message.shouldRenderAsSystemMessage {
             return [.text, .centered]
         }
 
-        // Do not show bubble if the message is to be rendered as large emoji
-        if !message.shouldRenderAsJumbomoji {
+        // Do not show bubble if the message is to be rendered as large emoji.
+        // Unless we are quoting a message, in this case the bubble should still be rendered.
+        if !message.shouldRenderAsJumbomoji || message.quotedMessage != nil {
             options.insert(.bubble)
         }
 
@@ -84,18 +86,22 @@ open class ChatMessageLayoutOptionsResolver {
         if isLastInSequence && !message.isSentByCurrentUser && channel.memberCount > 2 {
             options.insert(.authorName)
         }
-        
-        guard message.isDeleted == false else {
-            return options
-        }
-        
-        if hasQuotedMessage(message) {
-            options.insert(.quotedMessage)
-        }
         if channel.config.repliesEnabled && (message.isRootOfThread || message.isPartOfThread) {
             options.insert(.threadInfo)
             // The bubbles with thread look like continuous bubbles
             options.insert(.continuousBubble)
+        }
+
+        guard message.isDeleted == false else {
+            return options
+        }
+
+        if shouldRenderTranslation(message: message, channel: channel) {
+            options.insert(.translation)
+        }
+
+        if hasQuotedMessage(message) {
+            options.insert(.quotedMessage)
         }
         if hasReactions(channel, message, appearance) {
             options.insert(.reactions)
@@ -108,29 +114,6 @@ open class ChatMessageLayoutOptionsResolver {
         }
 
         return options
-    }
-
-    func hasQuotedMessage(_ message: ChatMessage) -> Bool {
-        message.quotedMessage?.id != nil
-    }
-
-    func hasReactions(_ channel: ChatChannel, _ message: ChatMessage, _ appareance: Appearance) -> Bool {
-        if !channel.config.reactionsEnabled {
-            return false
-        }
-
-        if message.reactionScores.isEmpty {
-            return false
-        }
-
-        let unhandledReactionTypes = message.latestReactions.filter { appareance.images.availableReactions[$0.type] == nil }
-            .map(\.type)
-
-        if !unhandledReactionTypes.isEmpty {
-            log.warning("message contains unhandled reaction types \(unhandledReactionTypes)")
-        }
-
-        return !message.latestReactions.filter { appareance.images.availableReactions[$0.type] != nil }.isEmpty
     }
 
     /// Says whether the message at given `indexPath` is the last one in a sequence of messages
@@ -167,9 +150,14 @@ open class ChatMessageLayoutOptionsResolver {
             return true
         }
 
+        // If message was edited, always break the grouping of messages.
+        if components?.isMessageEditedLabelEnabled == true && message.textUpdatedAt != nil {
+            return true
+        }
+
         // The message after the current one has different author so the current message
         // is either a standalone or last in sequence.
-        guard nextMessage.author == message.author else { return true }
+        guard nextMessage.author.id == message.author.id else { return true }
 
         // The current message should end the group when the next message has type:
         //  1. `error` (e.g. contains invalid command/didn't pass moderation)
@@ -180,14 +168,14 @@ open class ChatMessageLayoutOptionsResolver {
             nextMessage.type != .ephemeral,
             nextMessage.type != .system
         else { return true }
-        
+
         let delay = nextMessage.createdAt.timeIntervalSince(message.createdAt)
 
         // If the message next to the current one is sent with delay > maxTimeIntervalBetweenMessagesInGroup,
         // the current message ends the sequence.
         return delay > maxTimeIntervalBetweenMessagesInGroup
     }
-    
+
     /// Determines whether to populate `onlyVisibleToYouIndicator` for the given message.
     /// - Parameter message: The message.
     /// - Returns: `true` if `onlyVisibleToYouIndicator` layout option should be included for the given message.
@@ -195,7 +183,7 @@ open class ChatMessageLayoutOptionsResolver {
         guard message.isSentByCurrentUser else {
             return false
         }
-        
+
         switch message.type {
         case .ephemeral:
             return true
@@ -204,13 +192,13 @@ open class ChatMessageLayoutOptionsResolver {
                 log.assertionFailure("The `config` property must be assiged at this point.")
                 return false
             }
-            
+
             return config.deletedMessagesVisibility == .visibleForCurrentUser
         default:
             return false
         }
     }
-    
+
     /// Makes a decision to show the delivery status for the given message in the given channel.
     ///
     /// - Parameters:
@@ -219,7 +207,7 @@ open class ChatMessageLayoutOptionsResolver {
     /// - Returns: `true` if delivery status should be shown.
     open func canShowDeliveryStatus(for message: ChatMessage, in channel: ChatChannel) -> Bool {
         guard let status = message.deliveryStatus else { return false }
-        
+
         switch status {
         case .pending:
             return true
@@ -228,5 +216,44 @@ open class ChatMessageLayoutOptionsResolver {
         default:
             return false
         }
+    }
+}
+
+// MARK: Helpers
+
+private extension ChatMessageLayoutOptionsResolver {
+    func hasQuotedMessage(_ message: ChatMessage) -> Bool {
+        message.quotedMessage?.id != nil
+    }
+
+    func hasReactions(_ channel: ChatChannel, _ message: ChatMessage, _ appearance: Appearance) -> Bool {
+        if !channel.config.reactionsEnabled {
+            return false
+        }
+
+        if message.reactionScores.isEmpty {
+            return false
+        }
+
+        let unhandledReactionTypes = message.latestReactions.filter { appearance.images.availableReactions[$0.type] == nil }
+            .map(\.type)
+
+        if !unhandledReactionTypes.isEmpty {
+            log.warning("message contains unhandled reaction types \(unhandledReactionTypes)")
+        }
+
+        return !message.latestReactions.filter { appearance.images.availableReactions[$0.type] != nil }.isEmpty
+    }
+
+    func shouldRenderTranslation(message: ChatMessage, channel: ChatChannel) -> Bool {
+        guard components?.messageAutoTranslationEnabled == true else {
+            return false
+        }
+
+        guard let currentUserLang = channel.membership?.language else {
+            return false
+        }
+
+        return message.translatedText(for: currentUserLang) != nil
     }
 }

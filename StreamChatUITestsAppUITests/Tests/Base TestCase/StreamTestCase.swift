@@ -1,5 +1,5 @@
 //
-// Copyright © 2022 Stream.io Inc. All rights reserved.
+// Copyright © 2025 Stream.io Inc. All rights reserved.
 //
 
 import XCTest
@@ -16,6 +16,8 @@ class StreamTestCase: XCTestCase {
     var server: StreamMockServer!
     var recordVideo = false
     var mockServerEnabled = true
+    var mockServerCrashed = false
+    var switchApiKey = false
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -36,9 +38,8 @@ class StreamTestCase: XCTestCase {
         stopVideo()
         app.terminate()
         server.stop()
-        server = nil
         backendRobot.delayServerResponse(byTimeInterval: 0.0)
-        
+
         try super.tearDownWithError()
         app.launchArguments.removeAll()
         app.launchEnvironment.removeAll()
@@ -46,27 +47,34 @@ class StreamTestCase: XCTestCase {
 }
 
 extension StreamTestCase {
+    
+    func assertMockServer() {
+        XCTAssertFalse(mockServerCrashed, "Mock server failed on start")
+    }
 
     private func useMockServer() {
         if mockServerEnabled {
             // Leverage web socket server
             app.setLaunchArguments(.useMockServer)
-            
+
             // Configure web socket host
             app.setEnvironmentVariables([
                 .websocketHost: "\(MockServerConfiguration.websocketHost)",
                 .httpHost: "\(MockServerConfiguration.httpHost)",
                 .port: "\(MockServerConfiguration.port)"
             ])
+        } else if switchApiKey {
+            // Use SwiftUI api key instead
+            app.setEnvironmentVariables([.customApiKey: "zcgvnykxsfm8"])
         }
     }
-    
+
     private func attachElementTree() {
         let attachment = XCTAttachment(string: app.debugDescription)
         attachment.lifetime = .deleteOnSuccess
         add(attachment)
     }
-    
+
     private func alertHandler() {
         let title = "Push Notification Alert"
         _ = addUIInterruptionMonitor(withDescription: title) { (alert: XCUIElement) -> Bool in
@@ -78,28 +86,35 @@ extension StreamTestCase {
             return false
         }
     }
-    
+
     private func startMockServer() {
         server = StreamMockServer()
         server.configure()
-        let result = server.start(port: in_port_t(MockServerConfiguration.port))
-        if !result {
-            XCTFail("Mock server failed on start")
+        
+        for _ in 0...3 {
+            let serverHasStarted = server.start(port: MockServerConfiguration.port)
+            if serverHasStarted {
+                return
+            }
+            server.stop()
+            MockServerConfiguration.port = UInt16(Int.random(in: 61000..<62000))
         }
+        
+        mockServerCrashed = true
     }
-    
+
     private func startVideo() {
         if recordVideo {
             server.recordVideo(name: testName)
         }
     }
-    
+
     private func stopVideo() {
         if recordVideo {
             server.recordVideo(name: testName, delete: !isTestFailed(), stop: true)
         }
     }
-    
+
     private func isTestFailed() -> Bool {
         if let testRun = testRun {
             let failureCount = testRun.failureCount + testRun.unexpectedExceptionCount
@@ -107,7 +122,7 @@ extension StreamTestCase {
         }
         return false
     }
-    
+
     private var testName: String {
         String(name.split(separator: " ")[1].dropLast())
     }
